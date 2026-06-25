@@ -1,0 +1,8 @@
+a2a
+beeai-framework[a2a]
+starlette
+uvicorn
+httpx
+python-dotenv
+pydantic
+dotenv
