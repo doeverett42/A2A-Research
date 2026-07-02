@@ -13,6 +13,7 @@ from beeai_framework.backend import ChatModel
 from beeai_framework.middleware.trajectory import EventMeta, GlobalTrajectoryMiddleware
 from beeai_framework.tools.handoff import HandoffTool
 from beeai_framework.tools import Tool
+from beeai_framework.tools.think import ThinkTool
 from beeai_framework.tools.types import StringToolOutput
 from beeai_framework.emitter.emitter import Emitter 
 
@@ -92,7 +93,7 @@ def build_orchestrator_agent(remote_agent) -> RequirementAgent:
         name="HostOrchestrator",
         description="The primary routing agent that delegates tasks to the remote chatbot.",
         llm=llm,
-        tools=[remote_tool, inspect_tool],
+        tools=[remote_agent, think_tool:=ThinkTool()],
         middlewares=[trajectory_middleware],
         #Hardcoded reuquirements require the host to immediately delegate tasks to an agent rather 
         #than analyze agent cards and dtermine best fit, thus bypassing poisoned agentcard attack
