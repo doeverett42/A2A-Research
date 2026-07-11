@@ -4,16 +4,14 @@ from __future__ import annotations
 
 from a2a.types import AgentCapabilities, AgentCard, AgentInterface
 
-from common.config import config
 from remote.skills import build_skills
 
 
-def build_agent_card(base_url: str | None = None) -> AgentCard:
-    service_url = base_url or config.remote_base_url
+def build_agent_card(name: str, model: str, version: str, base_url: str) -> AgentCard:
     return AgentCard(
-        name=config.REMOTE_AGENT_NAME,
-        description="Remote reasoning agent backed by Ollama DeepSeek.",
-        version=config.REMOTE_AGENT_VERSION,
+        name=name,
+        description=f"Remote reasoning agent backed by Ollama model {model}.",
+        version=version,
         capabilities=AgentCapabilities(
             streaming=False,
             push_notifications=False,
@@ -22,11 +20,11 @@ def build_agent_card(base_url: str | None = None) -> AgentCard:
         supported_interfaces=[
             AgentInterface(
                 protocol_binding="JSONRPC",
-                url=service_url,
+                url=base_url,
                 protocol_version="1.0",
             )
         ],
         default_input_modes=["text/plain"],
         default_output_modes=["text/plain"],
-        skills=build_skills(),
+        skills=build_skills(model),
     )

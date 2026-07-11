@@ -1,39 +1,35 @@
-# Remote AI agent.
-# Contains the intelligence of the remote agents.
+#Remote AI agent
+#Contains the intelligence of the remote agents
 
 from __future__ import annotations
 
 from typing import Protocol
 
-from common.config import config
 from common.logging import logger
 from common.ollama_client import OllamaClient
 from common.prompts import SYSTEM_PROMPT, build_prompt
 
-
-class TextAgent(Protocol):
+#ensure that every remote agent includes the method run()
+class RemoteAgentProtocl(Protocol):
     async def run(self, query: str) -> str:
-        ...
+        pass
 
 
-# Simple DeepSeek-backed chat agent.
-class DeepSeekAgent:
+#simple ollama-backed chat agent
+class OllamaRemoteAgent:
 
-    def __init__(
-        self,
-        client: OllamaClient | None = None,
-        model: str | None = None,
-    ) -> None:
-        self.client = client or OllamaClient()
-        self.model = model or config.REMOTE_MODEL
+    def __init__(self, client: OllamaClient, model: str) -> None:
+        self.client = client
+        self.model = model
 
     async def run(self, query: str) -> str:
-        logger.info("Sending request to Ollama...")
+        logger.info("Sending request to Ollama model %s...", self.model)
 
         response = await self.client.chat(
-            model=self.model,
-            system=SYSTEM_PROMPT,
-            prompt=build_prompt(query),
+            model = self.model,
+            system = SYSTEM_PROMPT,
+            prompt = build_prompt(query),
+            temperature = 0.2
         )
 
         logger.info("Received response from Ollama.")

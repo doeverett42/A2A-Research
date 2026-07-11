@@ -1,4 +1,4 @@
-# Wrapper around the Ollama Python client.
+#wrapper around Ollama Python client
 
 from __future__ import annotations
 
@@ -6,14 +6,11 @@ from typing import Any
 
 from ollama import AsyncClient
 
-from common.config import config
-
-
 class OllamaClient:
-    def __init__(self, host: str | None = None) -> None:
-        self.client = AsyncClient(host=host or config.OLLAMA_HOST)
+    def __init__(self, host: str) -> None:
+        self.client = AsyncClient(host=host)
 
-    async def chat(self, model: str, system: str, prompt: str, temperature: float = 0.2) -> str:
+    async def chat(self, model: str, system: str, prompt: str, temperature: float) -> str:
         response = await self.client.chat(
             model = model,
             options = {"temperature": temperature},

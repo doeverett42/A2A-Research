@@ -1,5 +1,5 @@
-# Official A2A SDK client wrapper
-# Keeps protocol calls out of the host orchestrator
+#Official A2A SDK client wrapper
+#keeps protocol calls out of host orchestrator
 
 from __future__ import annotations
 
@@ -9,14 +9,13 @@ from a2a.client import ClientConfig, create_client
 from a2a.helpers import new_text_message
 from a2a.types import Role, SendMessageConfiguration, SendMessageRequest, StreamResponse
 
-from common.config import config
 from common.logging import logger
 
 
 class RemoteAgentClient:
-    def __init__(self, remote_url: str | None = None, timeout_seconds: int | None = None) -> None:
-        self.remote_url = remote_url or config.host_remote_url
-        self.timeout_seconds = timeout_seconds or config.A2A_CLIENT_TIMEOUT_SECONDS
+    def __init__(self, remote_url: str, timeout_seconds: int) -> None:
+        self.remote_url = remote_url
+        self.timeout_seconds = timeout_seconds
         self._client = None
 
     async def send_text(self, text: str) -> str:
@@ -25,11 +24,11 @@ class RemoteAgentClient:
             message = new_text_message(
                 text,
                 media_type = "text/plain",
-                role = Role.ROLE_USER,
+                role = Role.ROLE_USER
             ),
             configuration = SendMessageConfiguration(
-                accepted_output_modes = ["text/plain"],
-            ),
+                accepted_output_modes = ["text/plain"]
+            )
         )
 
         chunks = []
@@ -60,8 +59,8 @@ class RemoteAgentClient:
                         streaming = False,
                         polling = False,
                         httpx_client = httpx_client,
-                        accepted_output_modes = ["text/plain"],
-                    ),
+                        accepted_output_modes = ["text/plain"]
+                    )
                 )
             except Exception:
                 await httpx_client.aclose()

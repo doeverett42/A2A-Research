@@ -1,16 +1,57 @@
 from __future__ import annotations
-
+import argparse
 import uvicorn
 
-from common.config import config
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Start one configured remote A2A agent.")
+    parser.add_argument("--agent-index", "--agent", type=int, default=None)
+    parser.add_argument("--list-agents", action="store_true")
+    return parser.parse_args()
 
 
 def main() -> None:
+    args = _parse_args()
+    from common.config import config
+
+    if args.list_agents:
+        for spec in config.remote_agent_specs:
+            print(f"{spec['index']}: {spec['name']} | {spec['model']} | port {spec['port']}")
+        return
+
+    if args.agent_index is None:
+        raise SystemExit("remote.main requires --agent-index.")
+
+    from common.ollama_client import OllamaClient
+    from remote.agent import OllamaRemoteAgent
+    from remote.agent_card import build_agent_card
+    from remote.executor import OllamaAgentExecutor
+    from remote.server import build_remote_app
+
+    spec = config.remote_agent_spec(args.agent_index)
+    port = int(spec["port"])
+    model = str(spec["model"])
+
+    app = build_remote_app(
+        agent_card = build_agent_card(
+            name = str(spec["name"]),
+            model = model,
+            version = config.REMOTE_AGENT_VERSION,
+            base_url = config.remote_base_url(port)
+        ),
+        executor = OllamaAgentExecutor(
+            OllamaRemoteAgent(
+                client = OllamaClient(config.OLLAMA_HOST),
+                model = model
+            )
+        )
+    )
+
     uvicorn.run(
-        "remote.server:app",
-        host=config.REMOTE_HOST,
-        port=config.REMOTE_PORT,
-        reload=False,
+        app,
+        host = config.REMOTE_HOST,
+        port = port,
+        reload= False
     )
 
 
