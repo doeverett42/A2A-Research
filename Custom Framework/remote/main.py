@@ -16,7 +16,7 @@ def main() -> None:
 
     if args.list_agents:
         for spec in config.remote_agent_specs:
-            print(f"{spec['index']}: {spec['name']} | {spec['model']} | port {spec['port']}")
+            print(f"{spec['index']}: {spec['name']} | {spec['skill']['name']} | {spec['model']} | port {spec['port']}")
         return
 
     if args.agent_index is None:
@@ -25,7 +25,7 @@ def main() -> None:
     from common.ollama_client import OllamaClient
     from remote.agent import OllamaRemoteAgent
     from remote.agent_card import build_agent_card
-    from remote.executor import OllamaAgentExecutor
+    from remote.executor import RemoteAgentExecutor
     from remote.server import build_remote_app
 
     spec = config.remote_agent_spec(args.agent_index)
@@ -34,15 +34,15 @@ def main() -> None:
 
     app = build_remote_app(
         agent_card = build_agent_card(
-            name = str(spec["name"]),
-            model = model,
+            agent_spec = spec,
             version = config.REMOTE_AGENT_VERSION,
             base_url = config.remote_base_url(port)
         ),
-        executor = OllamaAgentExecutor(
+        executor = RemoteAgentExecutor(
             OllamaRemoteAgent(
                 client = OllamaClient(config.OLLAMA_HOST),
-                model = model
+                model = model,
+                system_prompt = str(spec["system_prompt"])
             )
         )
     )

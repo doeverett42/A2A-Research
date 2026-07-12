@@ -6,14 +6,14 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes
 from a2a.server.tasks import InMemoryTaskStore
 
-from remote.executor import OllamaAgentExecutor
+from remote.executor import RemoteAgentExecutor
 
 
-def build_remote_app(agent_card, executor: OllamaAgentExecutor) -> Starlette:
+def build_remote_app(agent_card, executor: RemoteAgentExecutor) -> Starlette:
     request_handler = DefaultRequestHandler(
-        agent_executor=executor,
-        task_store=InMemoryTaskStore(),
-        agent_card=agent_card,
+        agent_executor = executor,
+        task_store = InMemoryTaskStore(),
+        agent_card = agent_card,
     )
 
     routes = []

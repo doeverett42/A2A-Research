@@ -9,8 +9,8 @@ from a2a.types import TaskState
 from common.logging import logger
 from remote.agent import RemoteAgentProtocol
 
-#thin a2a protocol bridge around a text agent
-class OllamaAgentExecutor(AgentExecutor):
+#thin a2a protocol bridge around a remote agent
+class RemoteAgentExecutor(AgentExecutor):
     def __init__(self, agent: RemoteAgentProtocol) -> None:
         self.agent = agent
 
@@ -32,7 +32,7 @@ class OllamaAgentExecutor(AgentExecutor):
         await updater.update_status(
             state = TaskState.TASK_STATE_WORKING,
             message = new_text_message(
-                "Remote Ollama agent is processing the request.",
+                "Remote agent is processing the request.",
                 media_type = "text/plain",
                 context_id = task.context_id,
                 task_id = task.id
@@ -57,11 +57,11 @@ class OllamaAgentExecutor(AgentExecutor):
                     task_id = task.id
                 )
             )
-        except Exception:
+        except Exception as e:
             logger.exception("Remote agent execution failed.")
             await updater.failed(
                 message = new_text_message(
-                    "Remote agent execution failed.",
+                    f"Remote agent execution failed: {type(e).__name__}: {e}",
                     media_type = "text/plain",
                     context_id = task.context_id,
                     task_id = task.id

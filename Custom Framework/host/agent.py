@@ -3,10 +3,7 @@
 
 from __future__ import annotations
 
-import json
 import re
-
-from google.protobuf.json_format import MessageToDict
 
 from common.logging import logger
 from common.ollama_client import OllamaClient
@@ -44,20 +41,35 @@ class HostAgent:
 
 
 def _agent_cards_text(agents: list[RemoteAgentInfo]) -> str:
-    card_text = []
+    card_summaries = []
     for index, agent in enumerate(agents):
-        card = MessageToDict(agent.card)
-        card_text.append(
-            json.dumps(
-                {
-                    "index": index,
-                    "service_url": agent.url,
-                    "agent_card": card
-                },
-                indent = 2
+        skill_lines = []
+        for skill in agent.card.skills:
+            skill_lines.append(
+                "\n".join(
+                    [
+                        f"  skill_id: {skill.id}",
+                        f"  skill_name: {skill.name}",
+                        f"  skill_description: {skill.description}",
+                        f"  skill_tags: {', '.join(skill.tags)}",
+                        f"  skill_examples: {', '.join(skill.examples)}"
+                    ]
+                )
+            )
+
+        card_summaries.append(
+            "\n".join(
+                [
+                    f"index: {index}",
+                    f"name: {agent.card.name}",
+                    f"service_url: {agent.url}",
+                    f"description: {agent.card.description}",
+                    "skills:",
+                    "\n".join(skill_lines)
+                ]
             )
         )
-    return "\n\n".join(card_text)
+    return "\n\n".join(card_summaries)
 
 
 def _selected_index(response: str, agent_count: int) -> int:
