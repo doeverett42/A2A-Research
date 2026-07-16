@@ -1,4 +1,4 @@
-#Host CLI framework
+# host cli framework
 
 from __future__ import annotations
 
@@ -43,8 +43,15 @@ async def chat_loop() -> None:
                 break
 
             try:
-                response = await orchestrator.run(user_message)
-                print(f"remote> {response}")
+                result = await orchestrator.run(user_message)
+                print("plan>")
+                if result.plan.steps:
+                    for step in result.plan.steps:
+                        dependency_text = f" after {step.depends_on}" if step.depends_on else ""
+                        print(f"  {step.step_id}. {step.agent_name}{dependency_text}: {step.task}")
+                else:
+                    print(f"  host response: {result.plan.reason}")
+                print(f"response> {result.response}")
             except Exception as e:
                 logger.exception("Host orchestration failed.")
                 print(f"error> {e}")

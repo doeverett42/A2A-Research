@@ -21,6 +21,25 @@ class OllamaClient:
         )
         return _message_content(response)
 
+    async def chat_json(
+        self,
+        model: str,
+        system: str,
+        prompt: str,
+        temperature: float,
+        schema: dict[str, Any]
+    ) -> str:
+        response = await self.client.chat(
+            model = model,
+            format = schema,
+            options = {"temperature": temperature},
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return _message_content(response)
+
     async def health_check(self) -> bool:
         try:
             await self.client.list()
