@@ -27,10 +27,12 @@ def main() -> None:
     from remote.agent_card import build_agent_card
     from remote.executor import RemoteAgentExecutor
     from remote.server import build_remote_app
+    from remote.task_store import build_task_store
 
     spec = config.remote_agent_spec(args.agent_index)
     port = int(spec["port"])
     model = str(spec["model"])
+    task_store, database_engine = build_task_store(args.agent_index)
 
     app = build_remote_app(
         agent_card = build_agent_card(
@@ -44,7 +46,9 @@ def main() -> None:
                 model = model,
                 system_prompt = str(spec["system_prompt"])
             )
-        )
+        ),
+        task_store = task_store,
+        database_engine = database_engine
     )
 
     uvicorn.run(

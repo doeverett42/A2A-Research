@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
@@ -31,10 +32,7 @@ def _env_pipe_list(name: str) -> list[str]:
 
 def _env_semicolon_lists(name: str) -> list[list[str]]:
     return [
-        [
-            value.strip() for value in item.split(";") if value.strip()
-        ]
-        for item in _env_pipe_list(name)
+        [value.strip() for value in item.split(";") if value.strip()] for item in _env_pipe_list(name)
     ]
 
 
@@ -55,6 +53,7 @@ class Config:
     REMOTE_AGENT_SYSTEM_PROMPTS: str = os.environ["REMOTE_AGENT_SYSTEM_PROMPTS"]
     REMOTE_HOST: str = os.environ["REMOTE_HOST"]
     REMOTE_AGENT_VERSION: str = os.environ["REMOTE_AGENT_VERSION"]
+    TASK_DATABASE_DIRECTORY: str = os.environ["TASK_DATABASE_DIRECTORY"]
 
     @property
     def remote_agent_ports(self) -> list[int]:
@@ -178,6 +177,10 @@ class Config:
 
     def remote_base_url(self, port: int) -> str:
         return f"http://{self.REMOTE_HOST}:{port}"
+
+    def remote_task_database_path(self, agent_index: int) -> Path:
+        database_directory = Path(self.TASK_DATABASE_DIRECTORY).resolve()
+        return database_directory / f"remote_agent_{agent_index}.db"
 
     @property
     def remote_agent_card_urls(self) -> list[str]:

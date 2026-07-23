@@ -6,6 +6,7 @@ from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import TaskState
 
+from common.audit import record_audit_event
 from common.logging import logger
 from remote.agent import RemoteAgentProtocol
 
@@ -15,6 +16,12 @@ class RemoteAgentExecutor(AgentExecutor):
         self.agent = agent
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+        message_id = context.message.message_id if context.message else ""
+        record_audit_event(
+            "executor_started",
+            message_id = message_id
+        )
+
         if context.current_task:
             task = context.current_task
         else:
@@ -22,6 +29,13 @@ class RemoteAgentExecutor(AgentExecutor):
                 raise ValueError("A2A request did not include a message.")
             task = new_task_from_user_message(context.message)
             await event_queue.enqueue_event(task)
+
+        record_audit_event(
+            "task_ready",
+            message_id = message_id,
+            task_id = task.id,
+            context_id = task.context_id
+        )
 
         updater = TaskUpdater(
             event_queue = event_queue,
@@ -41,7 +55,15 @@ class RemoteAgentExecutor(AgentExecutor):
 
         try:
             query = context.get_user_input().strip()
+            record_audit_event(
+                "agent_call_started",
+                query_length = len(query)
+            )
             result = await self.agent.run(query)
+            record_audit_event(
+                "agent_call_completed",
+                response_length = len(result)
+            )
 
             await updater.add_artifact(
                 parts = [new_text_part(result, media_type="text/plain")],
@@ -57,7 +79,12 @@ class RemoteAgentExecutor(AgentExecutor):
                     task_id = task.id
                 )
             )
+            record_audit_event("executor_completed")
         except Exception as e:
+            record_audit_event(
+                "executor_failed",
+                error_type = type(e).__name__
+            )
             logger.exception("Remote agent execution failed.")
             await updater.failed(
                 message = new_text_message(
