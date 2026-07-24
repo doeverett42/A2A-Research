@@ -1,27 +1,39 @@
-# host orchestrator
-# coordinates discovery, planning, remote execution, and result synthesis
+#host orchestrator
+#coordinates discovery, planning, remote execution, and result synthesis
 
 from __future__ import annotations
 
 from common.logging import logger
 from host.agent import HostAgent
-from host.client import RemoteAgentClient
+from host.client import RemoteAgentClient, RemoteTaskResponse
 from host.discovery import AgentDiscovery
 from host.router import DelegationPlan, MultiRemoteRouter, PlanStep
 
 
 class StepResult:
-    def __init__(self, step: PlanStep, response: str = "", error: str = "") -> None:
+    def __init__(self, step: PlanStep, response: str = "", error: str = "", task_id: str = "", context_id: str = "", input_required: bool = False) -> None:
         self.step = step
         self.response = response
         self.error = error
+        self.task_id = task_id
+        self.context_id = context_id
+        self.input_required = input_required
 
 
 class OrchestrationResult:
-    def __init__(self, plan: DelegationPlan, step_results: list[StepResult], response: str) -> None:
+    def __init__(self, plan: DelegationPlan, step_results: list[StepResult], response: str, input_required: bool) -> None:
         self.plan = plan
         self.step_results = step_results
         self.response = response
+        self.input_required = input_required
+
+
+class PendingOrchestration:
+    def __init__(self, user_message: str, plan: DelegationPlan, step_results: list[StepResult], step_index: int) -> None:
+        self.user_message = user_message
+        self.plan = plan
+        self.step_results = step_results
+        self.step_index = step_index
 
 
 class HostOrchestrator:
@@ -31,20 +43,27 @@ class HostOrchestrator:
         self.router = router
         self.timeout_seconds = timeout_seconds
         self.remote_clients = {}
+        self.pending = None
 
     async def run(self, user_message: str) -> OrchestrationResult:
+        if self.pending:
+            return await self._continue_pending(user_message)
+
         agents = await self.discovery.discover()
         plan = await self.router.plan(user_message, agents, self.agent)
         _log_plan(plan)
 
         if not plan.steps:
             response = await self.agent.respond_directly(user_message)
-            return OrchestrationResult(plan, [], response)
+            return OrchestrationResult(plan, [], response, False)
 
-        step_results = []
-        results_by_id = {}
+        return await self._execute_plan(user_message, plan, [], 0)
 
-        for step in plan.steps:
+    async def _execute_plan(self, user_message: str, plan: DelegationPlan, step_results: list[StepResult], start_index: int) -> OrchestrationResult:
+        results_by_id = {result.step.step_id: result for result in step_results}
+
+        for step_index in range(start_index, len(plan.steps)):
+            step = plan.steps[step_index]
             dependencies = [results_by_id[step_id] for step_id in step.depends_on]
             failed_dependencies = [result for result in dependencies if result.error]
 
@@ -59,6 +78,16 @@ class HostOrchestrator:
             step_results.append(result)
             results_by_id[step.step_id] = result
 
+            if result.input_required:
+                self.pending = PendingOrchestration(
+                    user_message = user_message,
+                    plan = plan,
+                    step_results = step_results,
+                    step_index = step_index
+                )
+                return OrchestrationResult(plan, step_results, result.response, True)
+
+        self.pending = None
         successful_results = [result for result in step_results if result.response]
         if not successful_results:
             errors = "; ".join(result.error for result in step_results if result.error)
@@ -73,19 +102,49 @@ class HostOrchestrator:
                 results = _results_text(step_results)
             )
 
-        return OrchestrationResult(plan, step_results, final_response)
+        return OrchestrationResult(plan, step_results, final_response, False)
+
+    async def _continue_pending(self, user_message: str) -> OrchestrationResult:
+        pending = self.pending
+        waiting_result = pending.step_results[-1]
+        client = self._client_for(waiting_result.step.remote_url)
+
+        logger.info(
+            "Continuing plan step %s with %s.",
+            waiting_result.step.step_id,
+            waiting_result.step.agent_name
+        )
+
+        remote_response = await client.continue_task(
+            user_message,
+            task_id = waiting_result.task_id,
+            context_id = waiting_result.context_id
+        )
+        result = _step_result(waiting_result.step, remote_response)
+        pending.step_results[-1] = result
+
+        if result.input_required:
+            return OrchestrationResult(
+                pending.plan,
+                pending.step_results,
+                result.response,
+                True
+            )
+
+        self.pending = None
+        return await self._execute_plan(
+            pending.user_message,
+            pending.plan,
+            pending.step_results,
+            pending.step_index + 1
+        )
 
     async def close(self) -> None:
         for client in self.remote_clients.values():
             await client.close()
         self.remote_clients = {}
 
-    async def _execute_step(
-        self,
-        user_message: str,
-        step: PlanStep,
-        dependencies: list[StepResult]
-    ) -> StepResult:
+    async def _execute_step(self, user_message: str, step: PlanStep, dependencies: list[StepResult]) -> StepResult:
         dependency_results = [
             f"Step {result.step.step_id} from {result.step.agent_name}:\n{result.response}"
             for result in dependencies
@@ -106,9 +165,9 @@ class HostOrchestrator:
 
         try:
             client = self._client_for(step.remote_url)
-            response = await client.send_text(delegated_request)
+            remote_response = await client.send_text(delegated_request)
             logger.info("Completed plan step %s with %s.", step.step_id, step.agent_name)
-            return StepResult(step, response = response)
+            return _step_result(step, remote_response)
         except Exception as e:
             logger.exception("Plan step %s failed with %s.", step.step_id, step.agent_name)
             return StepResult(step, error = f"{type(e).__name__}: {e}")
@@ -117,6 +176,16 @@ class HostOrchestrator:
         if remote_url not in self.remote_clients:
             self.remote_clients[remote_url] = RemoteAgentClient(remote_url, self.timeout_seconds)
         return self.remote_clients[remote_url]
+
+
+def _step_result(step: PlanStep, response: RemoteTaskResponse) -> StepResult:
+    return StepResult(
+        step,
+        response = response.text,
+        task_id = response.task_id,
+        context_id = response.context_id,
+        input_required = response.requires_input
+    )
 
 
 def _log_plan(plan: DelegationPlan) -> None:

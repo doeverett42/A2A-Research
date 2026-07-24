@@ -5,6 +5,19 @@ def build_prompt(user_message: str) -> str:
     return user_message.strip()
 
 
+REMOTE_AGENT_RESPONSE_SYSTEM_PROMPT = """
+Return a completed response unless an essential detail is missing and the assigned work cannot be usefully completed without it.
+When essential information is missing, use status input_required and ask one concise question for that information.
+When the work can be completed, use status completed and provide the complete specialist response.
+Do not use input_required merely to ask about optional preferences that can be handled with a stated reasonable assumption.
+
+Return only valid JSON:
+{"status":"completed","message":"the specialist response"}
+or
+{"status":"input_required","message":"the question for the user"}
+""".strip()
+
+
 # host prompt for identifying specialist work before reading agent cards
 HOST_REQUEST_ANALYZER_SYSTEM_PROMPT = """
 You are the request analyzer for an A2A host orchestrator.

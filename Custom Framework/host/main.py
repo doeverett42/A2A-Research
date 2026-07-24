@@ -51,7 +51,10 @@ async def chat_loop() -> None:
                         print(f"  {step.step_id}. {step.agent_name}{dependency_text}: {step.task}")
                 else:
                     print(f"  host response: {result.plan.reason}")
-                print(f"response> {result.response}")
+                if result.input_required:
+                    print(f"input required> {result.response}")
+                else:
+                    print(f"response> {result.response}")
             except Exception as e:
                 logger.exception("Host orchestration failed.")
                 print(f"error> {e}")

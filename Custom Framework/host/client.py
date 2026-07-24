@@ -7,9 +7,21 @@ import httpx
 
 from a2a.client import ClientConfig, create_client
 from a2a.helpers import new_text_message
-from a2a.types import Role, SendMessageConfiguration, SendMessageRequest, StreamResponse
+from a2a.types import Role, SendMessageConfiguration, SendMessageRequest, StreamResponse, TaskState
 
 from common.logging import logger
+
+
+class RemoteTaskResponse:
+    def __init__(self, text: str, task_id: str, context_id: str, state: int) -> None:
+        self.text = text
+        self.task_id = task_id
+        self.context_id = context_id
+        self.state = state
+
+    @property
+    def requires_input(self) -> bool:
+        return self.state == TaskState.TASK_STATE_INPUT_REQUIRED
 
 
 class RemoteAgentClient:
@@ -18,12 +30,25 @@ class RemoteAgentClient:
         self.timeout_seconds = timeout_seconds
         self._client = None
 
-    async def send_text(self, text: str) -> str:
+    async def send_text(self, text: str) -> RemoteTaskResponse:
+        return await self._send_text(text, None, None)
+
+    async def continue_task(self, text: str, task_id: str, context_id: str) -> RemoteTaskResponse:
+        return await self._send_text(text, task_id, context_id)
+
+    async def _send_text(
+        self,
+        text: str,
+        task_id: str | None,
+        context_id: str | None
+    ) -> RemoteTaskResponse:
         client = await self._get_client()
         request = SendMessageRequest(
             message = new_text_message(
                 text,
                 media_type = "text/plain",
+                context_id = context_id,
+                task_id = task_id,
                 role = Role.ROLE_USER
             ),
             configuration = SendMessageConfiguration(
@@ -32,14 +57,39 @@ class RemoteAgentClient:
         )
 
         chunks = []
+        response_task_id = ""
+        response_context_id = ""
+        response_state = TaskState.TASK_STATE_UNSPECIFIED
         async for event in client.send_message(request):
             chunks.extend(_extract_text(event))
+            if event.HasField("task"):
+                response_task_id = event.task.id
+                response_context_id = event.task.context_id
+                response_state = event.task.status.state
+            elif event.HasField("status_update"):
+                response_task_id = event.status_update.task_id
+                response_context_id = event.status_update.context_id
+                response_state = event.status_update.status.state
+            elif event.HasField("artifact_update"):
+                response_task_id = event.artifact_update.task_id
+                response_context_id = event.artifact_update.context_id
+            elif event.HasField("message"):
+                response_task_id = event.message.task_id
+                response_context_id = event.message.context_id
 
         response = "\n".join(chunk for chunk in chunks if chunk).strip()
         if not response:
             raise RuntimeError("Remote agent returned no text response.")
+        if response_state == TaskState.TASK_STATE_INPUT_REQUIRED:
+            if not response_task_id or not response_context_id:
+                raise RuntimeError("Remote agent requested input without task/context IDs.")
 
-        return response
+        return RemoteTaskResponse(
+            text = response,
+            task_id = response_task_id,
+            context_id = response_context_id,
+            state = response_state
+        )
 
     async def close(self) -> None:
         if self._client is not None:
