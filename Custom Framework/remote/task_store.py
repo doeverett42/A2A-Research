@@ -8,9 +8,7 @@ from a2a.server.tasks import DatabaseTaskStore
 from common.config import config
 
 
-def build_task_store(
-    agent_index: int
-) -> tuple[DatabaseTaskStore, AsyncEngine]:
+def build_task_store(agent_index: int) -> tuple[DatabaseTaskStore, AsyncEngine]:
     database_path = config.remote_task_database_path(agent_index)
     database_path.parent.mkdir(parents=True, exist_ok=True)
     database_url = URL.create(

@@ -158,13 +158,7 @@ class HostAgent:
 
         return direct_response
 
-    async def prepare_delegation(
-        self,
-        user_message: str,
-        agent_name: str,
-        assigned_task: str,
-        dependency_results: list[str]
-    ) -> str:
+    async def prepare_delegation(self, user_message: str, agent_name: str, assigned_task: str, dependency_results: list[str]) -> str:
         sections = [
             "Original user request:",
             user_message.strip(),
