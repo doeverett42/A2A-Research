@@ -3,13 +3,20 @@
 
 from __future__ import annotations
 
-import httpx
+from collections.abc import Callable
+from typing import Any
 
-from a2a.client import ClientConfig, create_client
+import httpx
+from google.protobuf.json_format import MessageToDict
+
+from a2a.client import ClientCallContext, ClientConfig, create_client
 from a2a.helpers import new_text_message
 from a2a.types import Role, SendMessageConfiguration, SendMessageRequest, StreamResponse, TaskState
 
 from common.logging import logger
+
+
+ClientEventObserver = Callable[[dict[str, Any]], None]
 
 
 class RemoteTaskResponse:
@@ -25,10 +32,21 @@ class RemoteTaskResponse:
 
 
 class RemoteAgentClient:
-    def __init__(self, remote_url: str, timeout_seconds: int) -> None:
+    def __init__(
+        self,
+        remote_url: str,
+        timeout_seconds: int,
+        streaming: bool = False,
+        call_headers: dict[str, str] | None = None,
+        event_observer: ClientEventObserver | None = None
+    ) -> None:
         self.remote_url = remote_url
         self.timeout_seconds = timeout_seconds
+        self.streaming = streaming
+        self.call_headers = dict(call_headers or {})
+        self.event_observer = event_observer
         self._client = None
+        self._request_index = 0
 
     async def send_text(self, text: str) -> RemoteTaskResponse:
         return await self._send_text(text, None, None)
@@ -42,6 +60,8 @@ class RemoteAgentClient:
         task_id: str | None,
         context_id: str | None
     ) -> RemoteTaskResponse:
+        self._request_index += 1
+        request_index = self._request_index
         client = await self._get_client()
         request = SendMessageRequest(
             message = new_text_message(
@@ -60,8 +80,29 @@ class RemoteAgentClient:
         response_task_id = ""
         response_context_id = ""
         response_state = TaskState.TASK_STATE_UNSPECIFIED
-        async for event in client.send_message(request):
-            chunks.extend(_extract_text(event))
+        call_context = None
+        if self.call_headers:
+            call_context = ClientCallContext(
+                service_parameters = self.call_headers
+            )
+
+        event_index = 0
+        async for event in client.send_message(request, context = call_context):
+            event_index += 1
+            event_type = _event_type(event)
+            self._observe(
+                {
+                    "layer": "sdk",
+                    "observation": "event_yielded",
+                    "request_index": request_index,
+                    "event_index": event_index,
+                    "event_type": event_type,
+                    "payload": MessageToDict(event)
+                }
+            )
+
+            event_chunks = _extract_text(event)
+            chunks.extend(event_chunks)
             if event.HasField("task"):
                 response_task_id = event.task.id
                 response_context_id = event.task.context_id
@@ -77,6 +118,24 @@ class RemoteAgentClient:
                 response_task_id = event.message.task_id
                 response_context_id = event.message.context_id
 
+            #records wrapper output after this event changes text and handles
+            self._observe(
+                {
+                    "layer": "wrapper",
+                    "observation": "event_processed",
+                    "request_index": request_index,
+                    "event_index": event_index,
+                    "event_type": event_type,
+                    "extracted_text": event_chunks,
+                    "accumulated_text": "\n".join(
+                        chunk for chunk in chunks if chunk
+                    ).strip(),
+                    "selected_task_id": response_task_id,
+                    "selected_context_id": response_context_id,
+                    "selected_state": int(response_state)
+                }
+            )
+
         response = "\n".join(chunk for chunk in chunks if chunk).strip()
         if not response:
             raise RuntimeError("Remote agent returned no text response.")
@@ -84,6 +143,18 @@ class RemoteAgentClient:
             if not response_task_id or not response_context_id:
                 raise RuntimeError("Remote agent requested input without task/context IDs.")
 
+        self._observe(
+            {
+                "layer": "wrapper",
+                "observation": "response_returned",
+                "request_index": request_index,
+                "text": response,
+                "task_id": response_task_id,
+                "context_id": response_context_id,
+                "state": int(response_state),
+                "requires_input": response_state == TaskState.TASK_STATE_INPUT_REQUIRED
+            }
+        )
         return RemoteTaskResponse(
             text = response,
             task_id = response_task_id,
@@ -106,7 +177,7 @@ class RemoteAgentClient:
                 self._client = await create_client(
                     self.remote_url,
                     client_config = ClientConfig(
-                        streaming = False,
+                        streaming = self.streaming,
                         polling = False,
                         httpx_client = httpx_client,
                         accepted_output_modes = ["text/plain"]
@@ -118,6 +189,10 @@ class RemoteAgentClient:
             logger.info("Remote A2A client ready.")
 
         return self._client
+
+    def _observe(self, observation: dict[str, Any]) -> None:
+        if self.event_observer is not None:
+            self.event_observer(observation)
 
 
 def _extract_text(event: StreamResponse) -> list[str]:
@@ -148,3 +223,10 @@ def _parts_text(parts) -> list[str]:
         if part.WhichOneof("content") == "text":
             text_parts.append(part.text)
     return text_parts
+
+
+def _event_type(event: StreamResponse) -> str:
+    for event_type in ("task", "status_update", "artifact_update", "message"):
+        if event.HasField(event_type):
+            return event_type
+    return "unknown"

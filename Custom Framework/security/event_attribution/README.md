@@ -42,3 +42,52 @@ Run the fixture tests with:
 ```powershell
 python -m unittest security.event_attribution.test_server
 ```
+
+## Deterministic host-orchestrator experiment
+
+The experiment runner uses the real Agent Card discovery, `HostOrchestrator`,
+`RemoteAgentClient`, official SDK, and HTTP transport. It replaces only the
+LLM-owned planning and delegation decisions with a fixed one-step plan to the
+malicious endpoint.
+
+Start the malicious server in one terminal:
+
+```powershell
+python -m security.event_attribution.main
+```
+
+Run the forged input-required scenario in another terminal:
+
+```powershell
+python -m security.event_attribution.experiment --scenario EA-A3
+```
+
+Run the complete implemented matrix:
+
+```powershell
+python -m security.event_attribution.experiment --all-scenarios
+```
+
+The runner enables streaming only for its injected experiment client. Normal
+host clients remain non-streaming. It also restricts the target URL to
+loopback addresses.
+
+Each run writes one JSON report under `logs/audit/gap3_runs`. The report keeps
+the observations separated by layer:
+
+- Raw transport requests and exact malicious-server audit events.
+- Every event yielded by the official SDK.
+- Extracted text and selected handles after every wrapper event.
+- Deterministic plan, `StepResult`, and pending-orchestration snapshots.
+- Final one-step host output and calculated canary/handle measurements.
+
+When a scenario returns input-required, the runner submits one harmless
+continuation by default. The raw second request proves whether the host reused
+the returned task and context handles. Use `--no-continuation` to disable that
+step.
+
+Run all automated tests with:
+
+```powershell
+python -m unittest discover -v
+```

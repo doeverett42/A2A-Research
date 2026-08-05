@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from common.logging import logger
 from host.agent import HostAgent
 from host.client import RemoteAgentClient, RemoteTaskResponse
@@ -37,11 +39,19 @@ class PendingOrchestration:
 
 
 class HostOrchestrator:
-    def __init__(self, agent: HostAgent, discovery: AgentDiscovery, router: MultiRemoteRouter, timeout_seconds: int) -> None:
+    def __init__(
+        self,
+        agent: HostAgent,
+        discovery: AgentDiscovery,
+        router: MultiRemoteRouter,
+        timeout_seconds: int,
+        client_factory: Callable[[str, int], RemoteAgentClient] | None = None
+    ) -> None:
         self.agent = agent
         self.discovery = discovery
         self.router = router
         self.timeout_seconds = timeout_seconds
+        self.client_factory = client_factory
         self.remote_clients = {}
         self.pending = None
 
@@ -174,7 +184,11 @@ class HostOrchestrator:
 
     def _client_for(self, remote_url: str) -> RemoteAgentClient:
         if remote_url not in self.remote_clients:
-            self.remote_clients[remote_url] = RemoteAgentClient(remote_url, self.timeout_seconds)
+            if self.client_factory is None:
+                client = RemoteAgentClient(remote_url, self.timeout_seconds)
+            else:
+                client = self.client_factory(remote_url, self.timeout_seconds)
+            self.remote_clients[remote_url] = client
         return self.remote_clients[remote_url]
 
 
