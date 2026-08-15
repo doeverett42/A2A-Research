@@ -1,6 +1,21 @@
 from __future__ import annotations
 
+#local deterministic a2a test server
+#this server is the controlled response source used by both experiment runners.
+#it advertises a real agent card and accepts real sdk requests, but it never
+#calls an llm. instead, it selects one fixture from scenarios.py and emits the
+#same harmless events every time.
+#
+#request flow:
+#1. parse and validate the json-rpc request
+#2. choose the scenario from the experiment header or message
+#3. attach the run-specific canary used for attribution
+#4. decide whether this is an initial request or the expected continuation
+#5. return one normal response or the fixture's ordered streaming events
+#6. audit the raw request and every emitted event for the final report
+
 import json
+import re
 
 from google.protobuf.json_format import MessageToDict, ParseDict, ParseError
 from sse_starlette.sse import EventSourceResponse
@@ -23,10 +38,13 @@ from common.audit import AuditMiddleware, record_audit_event
 from security.event_attribution.scenarios import (
     CONTEXT_A_ID,
     CONTEXT_B_ID,
+    HOST_CONTINUATION_CANARY,
     Scenario,
     TASK_A_ID,
     TASK_B_ID,
+    build_continuation_scenario,
     build_scenario,
+    continuation_handles,
     scenario_catalog
 )
 
@@ -34,9 +52,11 @@ from security.event_attribution.scenarios import (
 AGENT_NAME = "Gap 3 Malicious Event Server"
 DEFAULT_SCENARIO_ID = "EA-C0"
 SCENARIO_HEADER = "X-A2A-Gap3-Scenario"
+RUN_CANARY_HEADER = "X-A2A-Gap3-Canary"
 
 
 def build_malicious_app(base_url: str, default_scenario_id: str = DEFAULT_SCENARIO_ID) -> Starlette:
+    #building the default once here catches a bad scenario before uvicorn starts.
     build_scenario(default_scenario_id)
     agent_card = _build_agent_card(base_url)
 
@@ -93,7 +113,7 @@ def _build_agent_card(base_url: str) -> AgentCard:
                 name = "Gap 3 event-attribution fixture",
                 description = "Emits deterministic coherent or identifier-spliced A2A response events.",
                 tags = ["security research", "event attribution", "deterministic fixture"],
-                examples = ["EA-C0", "EA-A1", "EA-A3"],
+                examples = ["EA-C0", "EA-C2", "EA-TM1", "EA-TM2", "EA-A3"],
                 input_modes = ["text/plain"],
                 output_modes = ["text/plain"]
             )
@@ -102,6 +122,8 @@ def _build_agent_card(base_url: str) -> AgentCard:
 
 
 async def _handle_a2a_request(request: Request, default_scenario_id: str) -> Response:
+    #keep the raw bytes for the audit trail before protobuf parsing changes the
+    #shape or naming of any fields.
     raw_body = await request.body()
     try:
         body = json.loads(raw_body)
@@ -137,13 +159,34 @@ async def _handle_a2a_request(request: Request, default_scenario_id: str) -> Res
             _error_response(request_id, -32602, "Invalid params")
         )
 
+    #the runners normally select the case with a header. message selection is
+    #also supported so the fixture can be inspected by hand during development.
     scenario_id = _selected_scenario_id(
         request,
         params,
         default_scenario_id
     )
     try:
-        scenario = build_scenario(scenario_id)
+        run_canary = validate_run_canary(
+            request.headers.get(RUN_CANARY_HEADER, "")
+        )
+    except ValueError as e:
+        return JSONResponse(
+            _error_response(request_id, -32602, str(e))
+        )
+
+    try:
+        #a continuation must carry the exact expected tuple and harmless text.
+        #otherwise it is treated as a fresh initial request for that scenario.
+        if _is_scenario_continuation(scenario_id, params):
+            scenario = build_continuation_scenario(
+                scenario_id,
+                run_canary
+            )
+            scenario_phase = "continuation_completion"
+        else:
+            scenario = build_scenario(scenario_id, run_canary)
+            scenario_phase = "initial"
     except ValueError:
         available = ", ".join(scenario_catalog())
         return JSONResponse(
@@ -158,7 +201,9 @@ async def _handle_a2a_request(request: Request, default_scenario_id: str) -> Res
     record_audit_event(
         "malicious_scenario_selected",
         scenario_id = scenario.scenario_id,
-        delivery = delivery
+        delivery = delivery,
+        phase = scenario_phase,
+        run_canary = run_canary
     )
 
     if method == "SendStreamingMessage":
@@ -188,8 +233,10 @@ def _normal_response(request_id, scenario: Scenario) -> Response:
 
 
 def _stream_response(request_id, scenario: Scenario) -> EventSourceResponse:
-    #SSE carries the multi-event sequences that normal SendMessage cannot represent
+    #sse carries the multi-event sequences that normal sendmessage cannot represent
     async def event_generator():
+        #events are yielded in list order so the wrapper can record its selected
+        #text, tuple, and state after each separate change.
         for delivery_index, event in enumerate(scenario.events, start = 1):
             payload = _result_response(
                 request_id,
@@ -220,6 +267,7 @@ async def _list_scenarios(
         {
             "defaultScenario": default_scenario_id,
             "selectionHeader": SCENARIO_HEADER,
+            "runCanaryHeader": RUN_CANARY_HEADER,
             "tasks": [
                 {
                     "name": "Task A",
@@ -269,6 +317,48 @@ def _selected_scenario_id(
             return candidate
 
     return default_scenario_id
+
+
+def _is_scenario_continuation(scenario_id: str, params: dict) -> bool:
+    #this check belongs to the deterministic fixture, not the host. the host has
+    #already chosen which tuple to send by the time the request reaches here.
+    handles = continuation_handles(scenario_id)
+    if handles is None:
+        return False
+    task_id, context_id = handles
+
+    message = params.get("message", {})
+    if not isinstance(message, dict):
+        return False
+    if message.get("taskId") != task_id:
+        return False
+    if message.get("contextId") != context_id:
+        return False
+
+    return HOST_CONTINUATION_CANARY in _message_text(message)
+
+
+def validate_run_canary(value: str) -> str:
+    run_canary = value.strip().upper()
+    if not run_canary:
+        return ""
+    if not re.fullmatch(r"CANARY-G3-[A-Z0-9-]{1,64}", run_canary):
+        raise ValueError(
+            "Gap 3 run canary must use CANARY-G3- followed by letters, "
+            "numbers, or hyphens."
+        )
+    return run_canary
+
+
+def _message_text(message: dict) -> str:
+    text_parts = []
+    for part in message.get("parts", []):
+        if not isinstance(part, dict):
+            continue
+        text = part.get("text")
+        if isinstance(text, str):
+            text_parts.append(text)
+    return "\n".join(text_parts)
 
 
 def _event_type(event: StreamResponse) -> str:

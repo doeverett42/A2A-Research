@@ -1,5 +1,14 @@
-#Official A2A SDK client wrapper
+#official a2a sdk client wrapper
 #keeps protocol calls out of host orchestrator
+#
+#this is the wrapper mentioned in the experiment notes. the orchestrator deals
+#with one simple remotetaskresponse, while this class deals with sdk messages,
+#tasks, status updates, artifact updates, and streaming order.
+#
+#for a streaming call it keeps reading until the server stops. after every event
+#it appends text and updates the currently selected task id, context id, and
+#state. the final selected values are what the orchestrator receives. observers
+#only copy these views into reports and do not change the response.
 
 from __future__ import annotations
 
@@ -49,9 +58,11 @@ class RemoteAgentClient:
         self._request_index = 0
 
     async def send_text(self, text: str) -> RemoteTaskResponse:
+        #a new task starts without a task or context handle supplied by the host.
         return await self._send_text(text, None, None)
 
     async def continue_task(self, text: str, task_id: str, context_id: str) -> RemoteTaskResponse:
+        #a continuation carries the tuple stored on the waiting orchestrator step.
         return await self._send_text(text, task_id, context_id)
 
     async def _send_text(
@@ -63,6 +74,8 @@ class RemoteAgentClient:
         self._request_index += 1
         request_index = self._request_index
         client = await self._get_client()
+        #both new and continued tasks use the same sdk request shape. the only
+        #difference is whether task_id and context_id are filled in above.
         request = SendMessageRequest(
             message = new_text_message(
                 text,
@@ -86,7 +99,21 @@ class RemoteAgentClient:
                 service_parameters = self.call_headers
             )
 
+        self._observe(
+            {
+                "layer": "wrapper",
+                "observation": "request_prepared",
+                "request_index": request_index,
+                "text": text,
+                "task_id": task_id or "",
+                "context_id": context_id or "",
+                "streaming": self.streaming
+            }
+        )
+
         event_index = 0
+        #the sdk yields once for a normal response or several times for a stream.
+        #ea-a3 matters because later events replace the handles selected here.
         async for event in client.send_message(request, context = call_context):
             event_index += 1
             event_type = _event_type(event)
@@ -119,6 +146,7 @@ class RemoteAgentClient:
                 response_context_id = event.message.context_id
 
             #records wrapper output after this event changes text and handles
+            #this is how the report shows the exact event where a/a became b/b
             self._observe(
                 {
                     "layer": "wrapper",
@@ -155,6 +183,8 @@ class RemoteAgentClient:
                 "requires_input": response_state == TaskState.TASK_STATE_INPUT_REQUIRED
             }
         )
+        #from here on the orchestrator sees only this flattened response. it does
+        #not reread the original sdk event sequence itself.
         return RemoteTaskResponse(
             text = response,
             task_id = response_task_id,

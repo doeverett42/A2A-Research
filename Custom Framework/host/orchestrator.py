@@ -1,5 +1,16 @@
 #host orchestrator
 #coordinates discovery, planning, remote execution, and result synthesis
+#
+#normal path:
+#1. discover agent cards
+#2. get a delegation plan from the selected router
+#3. execute steps in order and attach only declared dependency results
+#4. pause the whole plan if one step returns input-required
+#5. continue that exact stored step when the next user message arrives
+#6. resume at the following step and synthesize all completed results
+#
+#the gap 3 runners inject a fixed router, but they still use every execution,
+#pending-state, continuation, dependency, and synthesis branch in this class.
 
 from __future__ import annotations
 
@@ -56,6 +67,8 @@ class HostOrchestrator:
         self.pending = None
 
     async def run(self, user_message: str) -> OrchestrationResult:
+        #a second call while pending is continuation text for the waiting step,
+        #not a request to discover agents and build a brand new plan.
         if self.pending:
             return await self._continue_pending(user_message)
 
@@ -74,6 +87,8 @@ class HostOrchestrator:
 
         for step_index in range(start_index, len(plan.steps)):
             step = plan.steps[step_index]
+            #order and data flow are separate. a previous step only becomes
+            #reference data when its id appears in this depends_on list.
             dependencies = [results_by_id[step_id] for step_id in step.depends_on]
             failed_dependencies = [result for result in dependencies if result.error]
 
@@ -89,6 +104,8 @@ class HostOrchestrator:
             results_by_id[step.step_id] = result
 
             if result.input_required:
+                #save the exact step result returned by the wrapper, including
+                #its selected task/context tuple, then stop before later steps.
                 self.pending = PendingOrchestration(
                     user_message = user_message,
                     plan = plan,
@@ -125,6 +142,8 @@ class HostOrchestrator:
             waiting_result.step.agent_name
         )
 
+        #these handles come from host state, not from the experiment runner's
+        #expected-value log. this call is the key ea-a3 behavior under study.
         remote_response = await client.continue_task(
             user_message,
             task_id = waiting_result.task_id,
@@ -141,6 +160,8 @@ class HostOrchestrator:
                 True
             )
 
+        #once the waiting step completes, replace its old input-required result
+        #and continue with the next fixed or llm-planned step.
         self.pending = None
         return await self._execute_plan(
             pending.user_message,
@@ -155,6 +176,8 @@ class HostOrchestrator:
         self.remote_clients = {}
 
     async def _execute_step(self, user_message: str, step: PlanStep, dependencies: list[StepResult]) -> StepResult:
+        #only declared dependency responses are formatted into the new request.
+        #the do cases change this list to test direct and indirect contamination.
         dependency_results = [
             f"Step {result.step.step_id} from {result.step.agent_name}:\n{result.response}"
             for result in dependencies

@@ -25,6 +25,8 @@ python -m security.event_attribution.main --list-scenarios
 The default endpoint is `http://127.0.0.1:8010`. A request can override the
 server default with the `X-A2A-Gap3-Scenario` header, a message metadata field
 named `scenario`, or a text part containing `SCENARIO:EA-A1`.
+The follow-up runner also sends one unique `X-A2A-Gap3-Canary` value so rows
+and messages from separate runs can be distinguished.
 `GET /scenarios` reports the active default, every case, and the deterministic
 Task A/Context A and Task B/Context B identifiers.
 
@@ -90,4 +92,58 @@ Run all automated tests with:
 
 ```powershell
 python -m unittest discover -v
+```
+
+## Live local LLM framework experiment
+
+The live runner implements only the six follow-up tests from the experiment
+procedures: TM-1, TM-2, DO-2, DO-3, DO-5, and DO-6. It uses fixed delegation
+orders so repeated runs are comparable. The configured `HostAgent` still
+prepares dependency text and performs final synthesis, and Food and Budget are
+the normal LLM-backed remote agents. All service URLs must resolve to loopback
+addresses.
+
+The tuple fixtures are EA-C2 for the coherent A/A control, EA-TM1 for Task B
+with Context A, and EA-TM2 for Task A with Context B. The ordering tests use
+EA-C0 as the coherent control and EA-A3 as the input-required canary fixture.
+The host sends `CANARY-HOST-CONTINUATION` with whichever tuple the server
+returned, then resumes the remaining fixed plan steps.
+
+Start Ollama in one terminal:
+
+```powershell
+ollama serve
+```
+
+Start the malicious server, Food Agent, and Budget Agent together in a second
+terminal. The two normal agents still use their configured Ollama models.
+
+```powershell
+python -m security.event_attribution.live_services
+```
+
+Run one attack variant in a third terminal:
+
+```powershell
+python -m security.event_attribution.live_experiment --experiment TM-1 --variant attack --remote-agent-url http://127.0.0.1:8001 --remote-agent-url http://127.0.0.1:8005
+```
+
+Change `TM-1` to `TM-2`, `DO-2`, `DO-3`, `DO-5`, or `DO-6` to run the other
+documented test. Run the matching control by changing only the variant:
+
+```powershell
+python -m security.event_attribution.live_experiment --experiment TM-1 --variant control --remote-agent-url http://127.0.0.1:8001 --remote-agent-url http://127.0.0.1:8005
+```
+
+The report under `logs/audit/gap3_live_runs` records the selected Agent Cards,
+fixed plan, exact delegated requests, remote responses, continuation tuple,
+downstream canary propagation, and final synthesis. It also takes a baseline of
+the Food and Budget task databases, reads them again while input is pending,
+and reads them after completion. These database checks are read-only and report
+new rows plus canary matches in `status`, `history`, and `artifacts`.
+
+Run only the automated coverage for these six follow-up tests with:
+
+```powershell
+python -m unittest security.event_attribution.test_follow_up_experiments security.event_attribution.test_server
 ```

@@ -1,5 +1,27 @@
 from __future__ import annotations
 
+#standalone gap 3 experiment runner
+#this is the small version of the experiment, so it only follows one step from
+#the real host orchestrator to the local test server. it skips ollama planning
+#and synthesis on purpose so a changing model cannot change the test order.
+#
+#the full path through this file is:
+#1. discover the local test server and read its real agent card
+#2. build one fixed plan step that points at that server
+#3. send the selected scenario through the real a2a client wrapper
+#4. record every streaming event after the sdk and wrapper process it
+#5. let the real host orchestrator decide whether the task is now pending
+#6. send one harmless continuation when the response asks for input
+#7. save the transport, wrapper, orchestrator, and host views in one report
+#
+#usual local setup:
+#terminal 1: python -m security.event_attribution.main
+#terminal 2: python -m security.event_attribution.experiment --scenario ea-a3
+#
+#ea-a3 is useful here because its first event uses task a/context a, but its
+#later input-required event uses task b/context b. this shows which handles the
+#wrapper and orchestrator actually keep when the stream changes underneath them.
+
 import argparse
 import asyncio
 import json
@@ -36,6 +58,9 @@ DEFAULT_CONTINUATION = "CANARY-HOST-CONTINUATION"
 ATTACK_CANARIES = {
     "EA-C0": [],
     "EA-C1": [],
+    "EA-C2": [],
+    "EA-TM1": ["CANARY-TM1-SPLIT-B-A"],
+    "EA-TM2": ["CANARY-TM2-SPLIT-A-B"],
     "EA-A1": ["CANARY-FOREIGN-ARTIFACT-B"],
     "EA-A2": ["CANARY-CONTEXT-B"],
     "EA-A3": ["CANARY-FORGED-INPUT-B"],
@@ -70,7 +95,7 @@ class ExperimentRecorder:
         )
 
 
-#replaces only LLM-owned decisions while preserving the real host flow
+#replaces only the llm-owned wording decisions while preserving the real host flow
 class DeterministicHostAgent:
     def __init__(self, scenario_id: str, recorder: ExperimentRecorder) -> None:
         self.scenario_id = scenario_id
@@ -115,6 +140,7 @@ class DeterministicRouter:
                 f"Gap 3 discovery expected one malicious server and found {len(agents)}."
             )
 
+        #there is no model choice here. every run gets the same one-step plan.
         agent = agents[0]
         plan = DelegationPlan(
             mode = "delegate",
@@ -151,6 +177,8 @@ async def run_scenario(
         raise ValueError(f"Unknown Gap 3 scenario: {scenario_id}")
     _validate_loopback_url(server_url)
 
+    #the run and audit ids tie the outgoing request to the exact server events
+    #that come back later. this keeps two nearby runs from sharing evidence.
     run_id = f"gap3-{scenario_id.lower()}-{uuid4().hex}"
     audit_id = f"{run_id}-audit"
     recorder = ExperimentRecorder()
@@ -158,6 +186,8 @@ async def run_scenario(
     deterministic_router = DeterministicRouter(scenario_id, recorder)
 
     def client_factory(remote_url: str, timeout: int) -> RemoteAgentClient:
+        #streaming is required because the fixture changes state and handles
+        #across multiple events. the observer records what the wrapper sees.
         return RemoteAgentClient(
             remote_url,
             timeout,
@@ -169,6 +199,8 @@ async def run_scenario(
             event_observer = recorder.record_client
         )
 
+    #this is the normal host orchestrator. only its planner and host wording
+    #object were replaced above so the experiment stays repeatable.
     orchestrator = HostOrchestrator(
         agent = deterministic_agent,
         discovery = AgentDiscovery(
@@ -194,6 +226,7 @@ async def run_scenario(
     error = None
 
     try:
+        #the first call runs the one fixed plan step and may leave it pending.
         initial_result = await orchestrator.run(DEFAULT_USER_MESSAGE)
         pending_after_initial = _pending_snapshot(orchestrator.pending)
         recorder.record_orchestrator(
@@ -210,6 +243,8 @@ async def run_scenario(
                 task_id = initial_result.step_results[-1].task_id,
                 context_id = initial_result.step_results[-1].context_id
             )
+            #only the text is supplied here. the orchestrator itself pulls the
+            #task and context ids out of the pending step result it stored.
             continuation_result = await orchestrator.run(DEFAULT_CONTINUATION)
             pending_after_continuation = _pending_snapshot(orchestrator.pending)
             recorder.record_orchestrator(
@@ -229,6 +264,8 @@ async def run_scenario(
     finally:
         await orchestrator.close()
 
+    #the server audit, sdk events, wrapper output, and host state are kept apart
+    #so it is clear which layer first accepted or changed a value.
     transport_events = read_audit_events(AGENT_NAME, audit_id)
     sdk_observations = [
         item for item in recorder.client_observations

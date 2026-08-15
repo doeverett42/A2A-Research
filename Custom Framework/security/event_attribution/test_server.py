@@ -5,18 +5,31 @@ import unittest
 import httpx
 from google.protobuf.json_format import MessageToDict
 
-from a2a.client import ClientConfig, create_client
+from a2a.client import ClientCallContext, ClientConfig, create_client
 from a2a.helpers import new_text_message
-from a2a.types import Role, SendMessageConfiguration, SendMessageRequest
+from a2a.types import (
+    Role,
+    SendMessageConfiguration,
+    SendMessageRequest,
+    TaskState
+)
 
 from security.event_attribution.scenarios import (
     CONTEXT_A_ID,
     CONTEXT_B_ID,
+    EA_A3_COMPLETION_CANARY,
+    EA_C2_COMPLETION_CANARY,
+    EA_TM1_COMPLETION_CANARY,
+    EA_TM2_COMPLETION_CANARY,
+    HOST_CONTINUATION_CANARY,
     TASK_A_ID,
     TASK_B_ID,
     scenario_catalog
 )
-from security.event_attribution.server import build_malicious_app
+from security.event_attribution.server import (
+    RUN_CANARY_HEADER,
+    build_malicious_app
+)
 
 
 class MaliciousEventServerTests(unittest.IsolatedAsyncioTestCase):
@@ -78,6 +91,95 @@ class MaliciousEventServerTests(unittest.IsolatedAsyncioTestCase):
             MessageToDict(events[1]),
             MessageToDict(events[2])
         )
+
+    async def test_ea_a3_continuation_completes_forged_task(self) -> None:
+        events = await self._official_client_events(
+            "EA-A3",
+            streaming = True,
+            text = HOST_CONTINUATION_CANARY,
+            task_id = TASK_B_ID,
+            context_id = CONTEXT_B_ID
+        )
+
+        self.assertEqual(1, len(events))
+        update = events[0].status_update
+        self.assertEqual(TASK_B_ID, update.task_id)
+        self.assertEqual(CONTEXT_B_ID, update.context_id)
+        self.assertEqual(
+            TaskState.TASK_STATE_COMPLETED,
+            update.status.state
+        )
+        self.assertIn(
+            "CANARY-FORGED-INPUT-B",
+            update.status.message.parts[0].text
+        )
+        self.assertIn(
+            EA_A3_COMPLETION_CANARY,
+            update.status.message.parts[0].text
+        )
+
+    async def test_follow_up_continuations_keep_selected_tuple(self) -> None:
+        cases = (
+            (
+                "EA-C2",
+                TASK_A_ID,
+                CONTEXT_A_ID,
+                EA_C2_COMPLETION_CANARY
+            ),
+            (
+                "EA-TM1",
+                TASK_B_ID,
+                CONTEXT_A_ID,
+                EA_TM1_COMPLETION_CANARY
+            ),
+            (
+                "EA-TM2",
+                TASK_A_ID,
+                CONTEXT_B_ID,
+                EA_TM2_COMPLETION_CANARY
+            )
+        )
+
+        for scenario_id, task_id, context_id, completion_canary in cases:
+            with self.subTest(scenario = scenario_id, phase = "initial"):
+                initial_events = await self._stream_events(scenario_id)
+                update = initial_events[-1].status_update
+                self.assertEqual(task_id, update.task_id)
+                self.assertEqual(context_id, update.context_id)
+                self.assertEqual(
+                    TaskState.TASK_STATE_INPUT_REQUIRED,
+                    update.status.state
+                )
+
+            with self.subTest(scenario = scenario_id, phase = "continuation"):
+                continuation_events = await self._official_client_events(
+                    scenario_id,
+                    streaming = True,
+                    text = HOST_CONTINUATION_CANARY,
+                    task_id = task_id,
+                    context_id = context_id
+                )
+                update = continuation_events[-1].status_update
+                self.assertEqual(task_id, update.task_id)
+                self.assertEqual(context_id, update.context_id)
+                self.assertEqual(
+                    TaskState.TASK_STATE_COMPLETED,
+                    update.status.state
+                )
+                self.assertIn(
+                    completion_canary,
+                    update.status.message.parts[0].text
+                )
+
+    async def test_unique_run_canary_is_returned_as_plain_data(self) -> None:
+        run_canary = "CANARY-G3-TM1-TEST-001"
+        events = await self._official_client_events(
+            "EA-TM1",
+            streaming = True,
+            run_canary = run_canary
+        )
+
+        self.assertIn(run_canary, _event_text(events[-1]))
 
     async def test_scenario_catalog_reports_configured_default_and_tasks(self) -> None:
         app = build_malicious_app(
@@ -145,7 +247,11 @@ class MaliciousEventServerTests(unittest.IsolatedAsyncioTestCase):
     async def _official_client_events(
         self,
         scenario_id: str,
-        streaming: bool
+        streaming: bool,
+        text: str = "Run the selected deterministic Gap 3 scenario.",
+        task_id: str | None = None,
+        context_id: str | None = None,
+        run_canary: str | None = None
     ):
         transport = httpx.ASGITransport(app = self.app)
         httpx_client = httpx.AsyncClient(
@@ -163,9 +269,11 @@ class MaliciousEventServerTests(unittest.IsolatedAsyncioTestCase):
         )
         try:
             message = new_text_message(
-                "Run the selected deterministic Gap 3 scenario.",
+                text,
                 media_type = "text/plain",
-                role = Role.ROLE_USER
+                role = Role.ROLE_USER,
+                task_id = task_id,
+                context_id = context_id
             )
             message.metadata.update(
                 {
@@ -178,7 +286,19 @@ class MaliciousEventServerTests(unittest.IsolatedAsyncioTestCase):
                     accepted_output_modes = ["text/plain"]
                 )
             )
-            return [event async for event in client.send_message(request)]
+            context = None
+            if run_canary:
+                context = ClientCallContext(
+                    service_parameters = {
+                        RUN_CANARY_HEADER: run_canary
+                    }
+                )
+            return [
+                event async for event in client.send_message(
+                    request,
+                    context = context
+                )
+            ]
         finally:
             await client.close()
 
