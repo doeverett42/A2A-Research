@@ -7,6 +7,7 @@ import asyncio
 from common.config import config
 from common.logging import logger
 from common.ollama_client import OllamaClient
+from cyber.cases import CyberCaseStore
 from host.agent import HostAgent
 from host.discovery import AgentDiscovery
 from host.orchestrator import HostOrchestrator
@@ -29,10 +30,11 @@ async def chat_loop() -> None:
             timeout_seconds = config.A2A_CLIENT_TIMEOUT_SECONDS
         ),
         router = MultiRemoteRouter(),
-        timeout_seconds = config.A2A_CLIENT_TIMEOUT_SECONDS
+        timeout_seconds = config.A2A_CLIENT_TIMEOUT_SECONDS,
+        case_store = CyberCaseStore(config.cyber_case_directory_path)
     )
 
-    print("A2A host orchestrator. Type exit to quit.")
+    print("A2A cyber incident review coordinator. Type cases to list local cases.")
 
     try:
         while True:
@@ -41,6 +43,10 @@ async def chat_loop() -> None:
                 continue
             if user_message.lower() in EXIT_COMMANDS:
                 break
+            if user_message.lower() == "cases":
+                labels = orchestrator.case_store.labels()
+                print("cases> " + (", ".join(labels) if labels else "none"))
+                continue
 
             try:
                 result = await orchestrator.run(user_message)

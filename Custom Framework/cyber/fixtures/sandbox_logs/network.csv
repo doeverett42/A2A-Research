@@ -1,0 +1,7 @@
+_time,_raw
+2026-01-10T10:04:30Z,"action=allow source_ip=192.0.2.23 destination_ip=192.0.2.10 destination_port=445 protocol=tcp bytes_out=640"
+2026-01-10T10:05:30Z,"action=allow source_ip=192.0.2.23 destination_ip=198.51.100.20 destination_port=443 protocol=tcp bytes_out=1200"
+2026-01-10T10:07:00Z,"action=deny source_ip=192.0.2.23 destination_ip=198.51.100.30 destination_port=8443 protocol=tcp"
+2026-01-11T14:03:30Z,"action=allow source_ip=192.0.2.44 destination_ip=192.0.2.12 destination_port=445 protocol=tcp bytes_out=700"
+2026-01-11T14:05:30Z,"action=allow source_ip=192.0.2.44 destination_ip=203.0.113.40 destination_port=443 protocol=tcp bytes_out=900"
+2026-01-11T14:07:00Z,"action=deny source_ip=192.0.2.44 destination_ip=203.0.113.41 destination_port=8080 protocol=tcp"

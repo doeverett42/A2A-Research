@@ -1,0 +1,5 @@
+_time,_raw
+2026-01-10T10:05:45Z,"source_ip=192.0.2.23 destination=alpha-lab.invalid method=GET path=/training/report status=200 user_agent=LabBrowser"
+2026-01-10T10:06:45Z,"source_ip=192.0.2.23 destination=alpha-lab.invalid method=GET path=/missing status=404 user_agent=LabBrowser"
+2026-01-11T14:05:45Z,"source_ip=192.0.2.44 destination=beta-lab.invalid method=GET path=/training/check status=200 user_agent=LabBrowser"
+2026-01-11T14:06:45Z,"source_ip=192.0.2.44 destination=beta-lab.invalid method=GET path=/old status=404 user_agent=LabBrowser"

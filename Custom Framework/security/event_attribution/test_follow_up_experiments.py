@@ -16,14 +16,17 @@ from security.event_attribution.database_evidence import (
     snapshot_task_ids
 )
 from security.event_attribution.fixed_plans import (
-    BUDGET_AGENT_NAME,
-    FOOD_AGENT_NAME,
+    CORRELATION_AGENT_NAME,
+    IDENTITY_AGENT_NAME,
     FixedPlanRouter,
     follow_up_case,
     follow_up_catalog,
     plan_order_catalog
 )
-from security.event_attribution.live_experiment import _run_canary
+from security.event_attribution.live_experiment import (
+    _database_canary_matches,
+    _run_canary
+)
 from security.event_attribution.scenarios import (
     CONTEXT_B_ID,
     TASK_B_ID
@@ -31,9 +34,9 @@ from security.event_attribution.scenarios import (
 from security.event_attribution.server import AGENT_NAME
 
 
-MALICIOUS_URL = "http://gap3.test"
-FOOD_URL = "http://food.test"
-BUDGET_URL = "http://budget.test"
+MALICIOUS_URL = "http://127.0.0.1:8010"
+IDENTITY_URL = "http://127.0.0.1:8001"
+CORRELATION_URL = "http://127.0.0.1:8005"
 RUN_CANARY = "CANARY-G3-ORDER-TEST-001"
 
 
@@ -47,8 +50,8 @@ class FakeDiscovery:
     async def discover(self):
         return [
             FakeAgentInfo(AGENT_NAME, MALICIOUS_URL),
-            FakeAgentInfo(FOOD_AGENT_NAME, FOOD_URL),
-            FakeAgentInfo(BUDGET_AGENT_NAME, BUDGET_URL)
+            FakeAgentInfo(IDENTITY_AGENT_NAME, IDENTITY_URL),
+            FakeAgentInfo(CORRELATION_AGENT_NAME, CORRELATION_URL)
         ]
 
 
@@ -131,24 +134,24 @@ class FakeRemoteAgentClient:
 class FixedPlanTests(unittest.IsolatedAsyncioTestCase):
     async def test_plan_orders_have_expected_agents_and_dependencies(self) -> None:
         expected = {
-            "malicious-first": (
-                [AGENT_NAME, FOOD_AGENT_NAME, BUDGET_AGENT_NAME],
+            "external-identity-correlation": (
+                [AGENT_NAME, IDENTITY_AGENT_NAME, CORRELATION_AGENT_NAME],
                 [[], [1], [2]]
             ),
-            "food-malicious-budget": (
-                [FOOD_AGENT_NAME, AGENT_NAME, BUDGET_AGENT_NAME],
+            "identity-external-correlation": (
+                [IDENTITY_AGENT_NAME, AGENT_NAME, CORRELATION_AGENT_NAME],
                 [[], [1], [2]]
             ),
-            "food-malicious-budget-independent": (
-                [FOOD_AGENT_NAME, AGENT_NAME, BUDGET_AGENT_NAME],
+            "identity-external-correlation-independent": (
+                [IDENTITY_AGENT_NAME, AGENT_NAME, CORRELATION_AGENT_NAME],
                 [[], [], [1]]
             ),
-            "malicious-fanout": (
-                [AGENT_NAME, FOOD_AGENT_NAME, BUDGET_AGENT_NAME],
+            "external-fanout": (
+                [AGENT_NAME, IDENTITY_AGENT_NAME, CORRELATION_AGENT_NAME],
                 [[], [1], [1]]
             ),
-            "food-malicious-food": (
-                [FOOD_AGENT_NAME, AGENT_NAME, FOOD_AGENT_NAME],
+            "identity-external-identity": (
+                [IDENTITY_AGENT_NAME, AGENT_NAME, IDENTITY_AGENT_NAME],
                 [[], [1], [2]]
             )
         }
@@ -170,18 +173,28 @@ class FixedPlanTests(unittest.IsolatedAsyncioTestCase):
                     [step.depends_on for step in plan.steps]
                 )
 
+    async def test_fixed_plan_rejects_non_loopback_card_url(self) -> None:
+        agents = await FakeDiscovery().discover()
+        agents[0].url = "https://example.com"
+
+        with self.assertRaisesRegex(ValueError, "loopback"):
+            await FixedPlanRouter(
+                "external-identity-correlation",
+                "EA-A3"
+            ).plan("test", agents, None)
+
     def test_six_follow_up_codes_select_expected_cases(self) -> None:
         expected = {
-            "TM-1": ("EA-C2", "EA-TM1", "malicious-first"),
-            "TM-2": ("EA-C2", "EA-TM2", "malicious-first"),
-            "DO-2": ("EA-C0", "EA-A3", "food-malicious-budget"),
+            "TM-1": ("EA-C2", "EA-TM1", "external-identity-correlation"),
+            "TM-2": ("EA-C2", "EA-TM2", "external-identity-correlation"),
+            "DO-2": ("EA-C0", "EA-A3", "identity-external-correlation"),
             "DO-3": (
                 "EA-C0",
                 "EA-A3",
-                "food-malicious-budget-independent"
+                "identity-external-correlation-independent"
             ),
-            "DO-5": ("EA-C0", "EA-A3", "malicious-fanout"),
-            "DO-6": ("EA-C0", "EA-A3", "food-malicious-food")
+            "DO-5": ("EA-C0", "EA-A3", "external-fanout"),
+            "DO-6": ("EA-C0", "EA-A3", "identity-external-identity")
         }
 
         self.assertEqual(set(expected), set(follow_up_catalog()))
@@ -206,45 +219,45 @@ class FixedPlanTests(unittest.IsolatedAsyncioTestCase):
                     )
                 )
 
-    async def test_do_2_passes_malicious_result_to_budget(self) -> None:
+    async def test_do_2_passes_external_result_to_correlation(self) -> None:
         clients, result_before, result_after, calls_before = await self._run_order(
-            "food-malicious-budget"
+            "identity-external-correlation"
         )
 
         self.assertTrue(result_before.input_required)
-        self.assertEqual(0, calls_before[BUDGET_URL])
+        self.assertEqual(0, calls_before[CORRELATION_URL])
         self.assertFalse(result_after.input_required)
-        self.assertIn(RUN_CANARY, clients[BUDGET_URL].requests[0])
+        self.assertIn(RUN_CANARY, clients[CORRELATION_URL].requests[0])
 
-    async def test_do_3_blocks_budget_but_keeps_its_input_clean(self) -> None:
+    async def test_do_3_blocks_correlation_but_keeps_its_input_clean(self) -> None:
         clients, result_before, result_after, calls_before = await self._run_order(
-            "food-malicious-budget-independent"
+            "identity-external-correlation-independent"
         )
 
         self.assertTrue(result_before.input_required)
-        self.assertEqual(0, calls_before[BUDGET_URL])
+        self.assertEqual(0, calls_before[CORRELATION_URL])
         self.assertFalse(result_after.input_required)
-        self.assertNotIn(RUN_CANARY, clients[BUDGET_URL].requests[0])
+        self.assertNotIn(RUN_CANARY, clients[CORRELATION_URL].requests[0])
 
     async def test_do_5_passes_one_result_to_both_remote_agents(self) -> None:
-        clients, _, _, _ = await self._run_order("malicious-fanout")
+        clients, _, _, _ = await self._run_order("external-fanout")
 
-        self.assertIn(RUN_CANARY, clients[FOOD_URL].requests[0])
-        self.assertIn(RUN_CANARY, clients[BUDGET_URL].requests[0])
+        self.assertIn(RUN_CANARY, clients[IDENTITY_URL].requests[0])
+        self.assertIn(RUN_CANARY, clients[CORRELATION_URL].requests[0])
 
-    async def test_do_6_separates_food_before_and_after_requests(self) -> None:
-        clients, _, _, _ = await self._run_order("food-malicious-food")
-        food_requests = clients[FOOD_URL].requests
+    async def test_do_6_separates_identity_before_and_after_requests(self) -> None:
+        clients, _, _, _ = await self._run_order("identity-external-identity")
+        identity_requests = clients[IDENTITY_URL].requests
 
-        self.assertEqual(2, len(food_requests))
-        self.assertNotIn(RUN_CANARY, food_requests[0])
-        self.assertIn(RUN_CANARY, food_requests[1])
+        self.assertEqual(2, len(identity_requests))
+        self.assertNotIn(RUN_CANARY, identity_requests[0])
+        self.assertIn(RUN_CANARY, identity_requests[1])
 
     async def _run_order(self, plan_order: str):
         clients = {
             MALICIOUS_URL: FakeMaliciousClient(),
-            FOOD_URL: FakeRemoteAgentClient("Food"),
-            BUDGET_URL: FakeRemoteAgentClient("Budget")
+            IDENTITY_URL: FakeRemoteAgentClient("Identity"),
+            CORRELATION_URL: FakeRemoteAgentClient("Correlation")
         }
         orchestrator = HostOrchestrator(
             agent = FormatterHostAgent(),
@@ -271,7 +284,7 @@ class DatabaseEvidenceTests(unittest.TestCase):
             database_path = Path(directory) / "remote_agent_0.db"
             self._create_database(database_path)
             self._insert_task(database_path, "clean-task", "[]")
-            paths = {FOOD_AGENT_NAME: database_path}
+            paths = {IDENTITY_AGENT_NAME: database_path}
             baseline = snapshot_task_ids(paths)
             self._insert_task(
                 database_path,
@@ -280,17 +293,61 @@ class DatabaseEvidenceTests(unittest.TestCase):
             )
 
             evidence = database_evidence(paths, baseline, RUN_CANARY)
-            food_evidence = evidence["agents"][FOOD_AGENT_NAME]
+            identity_evidence = evidence["agents"][IDENTITY_AGENT_NAME]
 
-            self.assertEqual(1, food_evidence["new_task_count"])
-            self.assertEqual("test-task", food_evidence["new_rows"][0]["task_id"])
+            self.assertEqual(1, identity_evidence["new_task_count"])
+            self.assertEqual("test-task", identity_evidence["new_rows"][0]["task_id"])
             self.assertEqual(
                 ["history"],
-                food_evidence["new_rows"][0]["run_canary_columns"]
+                identity_evidence["new_rows"][0]["run_canary_columns"]
             )
             self.assertNotIn(
                 "clean-task",
-                [row["task_id"] for row in food_evidence["new_rows"]]
+                [row["task_id"] for row in identity_evidence["new_rows"]]
+            )
+
+    def test_run_canary_matching_requires_the_exact_token(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "remote_agent_0.db"
+            self._create_database(database_path)
+            paths = {IDENTITY_AGENT_NAME: database_path}
+            baseline = snapshot_task_ids(paths)
+            self._insert_task(
+                database_path,
+                "longer-canary-task",
+                json.dumps(
+                    [{"parts": [{"text": f"{RUN_CANARY}-OTHER"}]}]
+                )
+            )
+
+            evidence = database_evidence(paths, baseline, RUN_CANARY)
+            row = evidence["agents"][IDENTITY_AGENT_NAME]["new_rows"][0]
+
+            self.assertFalse(row["contains_run_canary"])
+            self.assertEqual([], row["run_canary_columns"])
+
+    def test_case_evidence_canary_is_included_in_database_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "remote_agent_0.db"
+            self._create_database(database_path)
+            paths = {IDENTITY_AGENT_NAME: database_path}
+            baseline = snapshot_task_ids(paths)
+            self._insert_task(database_path, "case-task", "[]")
+            self._insert_case_evidence(
+                database_path,
+                "case-task",
+                json.dumps([RUN_CANARY])
+            )
+
+            evidence = database_evidence(paths, baseline, RUN_CANARY)
+            matches = _database_canary_matches(evidence)
+
+            self.assertEqual(1, len(matches))
+            self.assertEqual("case_evidence", matches[0]["source"])
+            self.assertEqual("case-task", matches[0]["task_id"])
+            self.assertEqual(
+                ["request_canaries"],
+                matches[0]["columns"]
             )
 
     def _create_database(self, path: Path) -> None:
@@ -307,6 +364,58 @@ class DatabaseEvidenceTests(unittest.TestCase):
                     artifacts TEXT
                 )
                 """
+            )
+            connection.execute(
+                """
+                CREATE TABLE case_evidence (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    recorded_at TEXT,
+                    stage TEXT,
+                    agent_name TEXT,
+                    message_id TEXT,
+                    task_id TEXT,
+                    context_id TEXT,
+                    case_label TEXT,
+                    packet_hash TEXT,
+                    evidence_group TEXT,
+                    request_canaries TEXT,
+                    response_canaries TEXT
+                )
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    def _insert_case_evidence(
+        self,
+        path: Path,
+        task_id: str,
+        request_canaries: str
+    ) -> None:
+        connection = sqlite3.connect(path)
+        try:
+            connection.execute(
+                """
+                INSERT INTO case_evidence (
+                    recorded_at, stage, agent_name, message_id, task_id,
+                    context_id, case_label, packet_hash, evidence_group,
+                    request_canaries, response_canaries
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "2026-08-10T00:00:00Z",
+                    "completed",
+                    IDENTITY_AGENT_NAME,
+                    "message-1",
+                    task_id,
+                    f"{task_id}-context",
+                    "CYBER-SANDBOX-A",
+                    "a" * 64,
+                    "identity",
+                    request_canaries,
+                    "[]"
+                )
             )
             connection.commit()
         finally:

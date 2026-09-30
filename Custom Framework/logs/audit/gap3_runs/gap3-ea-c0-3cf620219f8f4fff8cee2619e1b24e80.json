@@ -1,0 +1,592 @@
+{
+  "run": {
+    "run_id": "gap3-ea-c0-3cf620219f8f4fff8cee2619e1b24e80",
+    "scenario_id": "EA-C0",
+    "started_at": "2026-09-06T23:10:31.729240+00:00",
+    "completed_at": "2026-09-06T23:10:31.872027+00:00",
+    "server_url": "http://127.0.0.1:8010",
+    "streaming": true,
+    "continued_pending_task": false
+  },
+  "layers": {
+    "transport": {
+      "audit_id": "gap3-ea-c0-3cf620219f8f4fff8cee2619e1b24e80-audit",
+      "requests": [
+        {
+          "timestamp": "2026-09-06T23:10:31.837927+00:00",
+          "request_id": "774a06fc-03c6-4e11-a17a-b8431b4cca89",
+          "method": "SendStreamingMessage",
+          "raw_payload": "{\"method\":\"SendStreamingMessage\",\"params\":{\"message\":{\"messageId\":\"a918fdb2-084e-412f-a74c-5b0f46b4a1b0\",\"role\":\"ROLE_USER\",\"parts\":[{\"text\":\"EA-C0\",\"mediaType\":\"text/plain\"}]},\"configuration\":{\"acceptedOutputModes\":[\"text/plain\"]}},\"id\":\"774a06fc-03c6-4e11-a17a-b8431b4cca89\",\"jsonrpc\":\"2.0\"}",
+          "payload": {
+            "method": "SendStreamingMessage",
+            "params": {
+              "message": {
+                "messageId": "a918fdb2-084e-412f-a74c-5b0f46b4a1b0",
+                "role": "ROLE_USER",
+                "parts": [
+                  {
+                    "text": "EA-C0",
+                    "mediaType": "text/plain"
+                  }
+                ]
+              },
+              "configuration": {
+                "acceptedOutputModes": [
+                  "text/plain"
+                ]
+              }
+            },
+            "id": "774a06fc-03c6-4e11-a17a-b8431b4cca89",
+            "jsonrpc": "2.0"
+          }
+        }
+      ],
+      "audit_events": [
+        {
+          "timestamp": "2026-09-06T23:10:31.834933+00:00",
+          "audit_id": "gap3-ea-c0-3cf620219f8f4fff8cee2619e1b24e80-audit",
+          "agent_name": "External Security Reviewer Test Agent",
+          "event": "http_request_received",
+          "method": "POST",
+          "path": "/"
+        },
+        {
+          "timestamp": "2026-09-06T23:10:31.837927+00:00",
+          "audit_id": "gap3-ea-c0-3cf620219f8f4fff8cee2619e1b24e80-audit",
+          "agent_name": "External Security Reviewer Test Agent",
+          "event": "malicious_request_parsed",
+          "request_id": "774a06fc-03c6-4e11-a17a-b8431b4cca89",
+          "method": "SendStreamingMessage",
+          "raw_payload": "{\"method\":\"SendStreamingMessage\",\"params\":{\"message\":{\"messageId\":\"a918fdb2-084e-412f-a74c-5b0f46b4a1b0\",\"role\":\"ROLE_USER\",\"parts\":[{\"text\":\"EA-C0\",\"mediaType\":\"text/plain\"}]},\"configuration\":{\"acceptedOutputModes\":[\"text/plain\"]}},\"id\":\"774a06fc-03c6-4e11-a17a-b8431b4cca89\",\"jsonrpc\":\"2.0\"}"
+        },
+        {
+          "timestamp": "2026-09-06T23:10:31.841930+00:00",
+          "audit_id": "gap3-ea-c0-3cf620219f8f4fff8cee2619e1b24e80-audit",
+          "agent_name": "External Security Reviewer Test Agent",
+          "event": "malicious_scenario_selected",
+          "scenario_id": "EA-C0",
+          "delivery": "streaming",
+          "phase": "initial",
+          "run_canary": ""
+        },
+        {
+          "timestamp": "2026-09-06T23:10:31.848931+00:00",
+          "audit_id": "gap3-ea-c0-3cf620219f8f4fff8cee2619e1b24e80-audit",
+          "agent_name": "External Security Reviewer Test Agent",
+          "event": "malicious_event_emitted",
+          "scenario_id": "EA-C0",
+          "delivery": "streaming",
+          "delivery_index": 1,
+          "event_type": "task",
+          "payload": {
+            "jsonrpc": "2.0",
+            "id": "774a06fc-03c6-4e11-a17a-b8431b4cca89",
+            "result": {
+              "task": {
+                "id": "gap3-task-a",
+                "contextId": "gap3-context-a",
+                "status": {
+                  "state": "TASK_STATE_WORKING",
+                  "message": {
+                    "messageId": "gap3-message-1-gap3-task-a",
+                    "contextId": "gap3-context-a",
+                    "taskId": "gap3-task-a",
+                    "role": "ROLE_AGENT",
+                    "parts": [
+                      {
+                        "text": "001 CANARY-TASK-A",
+                        "mediaType": "text/plain"
+                      }
+                    ],
+                    "metadata": {
+                      "sequenceNumber": 1.0
+                    }
+                  }
+                },
+                "metadata": {
+                  "sequenceNumber": 1.0
+                }
+              }
+            }
+          },
+          "raw_payload": "{\"jsonrpc\":\"2.0\",\"id\":\"774a06fc-03c6-4e11-a17a-b8431b4cca89\",\"result\":{\"task\":{\"id\":\"gap3-task-a\",\"contextId\":\"gap3-context-a\",\"status\":{\"state\":\"TASK_STATE_WORKING\",\"message\":{\"messageId\":\"gap3-message-1-gap3-task-a\",\"contextId\":\"gap3-context-a\",\"taskId\":\"gap3-task-a\",\"role\":\"ROLE_AGENT\",\"parts\":[{\"text\":\"001 CANARY-TASK-A\",\"mediaType\":\"text/plain\"}],\"metadata\":{\"sequenceNumber\":1.0}}},\"metadata\":{\"sequenceNumber\":1.0}}}}"
+        },
+        {
+          "timestamp": "2026-09-06T23:10:31.852931+00:00",
+          "audit_id": "gap3-ea-c0-3cf620219f8f4fff8cee2619e1b24e80-audit",
+          "agent_name": "External Security Reviewer Test Agent",
+          "event": "malicious_event_emitted",
+          "scenario_id": "EA-C0",
+          "delivery": "streaming",
+          "delivery_index": 2,
+          "event_type": "artifact_update",
+          "payload": {
+            "jsonrpc": "2.0",
+            "id": "774a06fc-03c6-4e11-a17a-b8431b4cca89",
+            "result": {
+              "artifactUpdate": {
+                "taskId": "gap3-task-a",
+                "contextId": "gap3-context-a",
+                "artifact": {
+                  "artifactId": "gap3-artifact-a",
+                  "name": "gap3-canary",
+                  "parts": [
+                    {
+                      "text": "002 CANARY-ARTIFACT-A",
+                      "mediaType": "text/plain"
+                    }
+                  ],
+                  "metadata": {
+                    "sequenceNumber": 2.0,
+                    "sourceTaskId": "gap3-task-a",
+                    "sourceContextId": "gap3-context-a"
+                  }
+                },
+                "lastChunk": true,
+                "metadata": {
+                  "sequenceNumber": 2.0
+                }
+              }
+            }
+          },
+          "raw_payload": "{\"jsonrpc\":\"2.0\",\"id\":\"774a06fc-03c6-4e11-a17a-b8431b4cca89\",\"result\":{\"artifactUpdate\":{\"taskId\":\"gap3-task-a\",\"contextId\":\"gap3-context-a\",\"artifact\":{\"artifactId\":\"gap3-artifact-a\",\"name\":\"gap3-canary\",\"parts\":[{\"text\":\"002 CANARY-ARTIFACT-A\",\"mediaType\":\"text/plain\"}],\"metadata\":{\"sequenceNumber\":2.0,\"sourceTaskId\":\"gap3-task-a\",\"sourceContextId\":\"gap3-context-a\"}},\"lastChunk\":true,\"metadata\":{\"sequenceNumber\":2.0}}}}"
+        },
+        {
+          "timestamp": "2026-09-06T23:10:31.856931+00:00",
+          "audit_id": "gap3-ea-c0-3cf620219f8f4fff8cee2619e1b24e80-audit",
+          "agent_name": "External Security Reviewer Test Agent",
+          "event": "malicious_event_emitted",
+          "scenario_id": "EA-C0",
+          "delivery": "streaming",
+          "delivery_index": 3,
+          "event_type": "status_update",
+          "payload": {
+            "jsonrpc": "2.0",
+            "id": "774a06fc-03c6-4e11-a17a-b8431b4cca89",
+            "result": {
+              "statusUpdate": {
+                "taskId": "gap3-task-a",
+                "contextId": "gap3-context-a",
+                "status": {
+                  "state": "TASK_STATE_COMPLETED",
+                  "message": {
+                    "messageId": "gap3-message-3-gap3-task-a",
+                    "contextId": "gap3-context-a",
+                    "taskId": "gap3-task-a",
+                    "role": "ROLE_AGENT",
+                    "parts": [
+                      {
+                        "text": "003 CANARY-STATUS-A",
+                        "mediaType": "text/plain"
+                      }
+                    ],
+                    "metadata": {
+                      "sequenceNumber": 3.0
+                    }
+                  }
+                },
+                "metadata": {
+                  "sequenceNumber": 3.0
+                }
+              }
+            }
+          },
+          "raw_payload": "{\"jsonrpc\":\"2.0\",\"id\":\"774a06fc-03c6-4e11-a17a-b8431b4cca89\",\"result\":{\"statusUpdate\":{\"taskId\":\"gap3-task-a\",\"contextId\":\"gap3-context-a\",\"status\":{\"state\":\"TASK_STATE_COMPLETED\",\"message\":{\"messageId\":\"gap3-message-3-gap3-task-a\",\"contextId\":\"gap3-context-a\",\"taskId\":\"gap3-task-a\",\"role\":\"ROLE_AGENT\",\"parts\":[{\"text\":\"003 CANARY-STATUS-A\",\"mediaType\":\"text/plain\"}],\"metadata\":{\"sequenceNumber\":3.0}}},\"metadata\":{\"sequenceNumber\":3.0}}}}"
+        },
+        {
+          "timestamp": "2026-09-06T23:10:31.864956+00:00",
+          "audit_id": "gap3-ea-c0-3cf620219f8f4fff8cee2619e1b24e80-audit",
+          "agent_name": "External Security Reviewer Test Agent",
+          "event": "http_response_sent",
+          "status_code": 200
+        }
+      ]
+    },
+    "sdk": {
+      "observations": [
+        {
+          "recorded_at": "2026-09-06T23:10:31.860929+00:00",
+          "layer": "sdk",
+          "observation": "event_yielded",
+          "request_index": 1,
+          "event_index": 1,
+          "event_type": "task",
+          "payload": {
+            "task": {
+              "id": "gap3-task-a",
+              "contextId": "gap3-context-a",
+              "status": {
+                "state": "TASK_STATE_WORKING",
+                "message": {
+                  "messageId": "gap3-message-1-gap3-task-a",
+                  "contextId": "gap3-context-a",
+                  "taskId": "gap3-task-a",
+                  "role": "ROLE_AGENT",
+                  "parts": [
+                    {
+                      "text": "001 CANARY-TASK-A",
+                      "mediaType": "text/plain"
+                    }
+                  ],
+                  "metadata": {
+                    "sequenceNumber": 1.0
+                  }
+                }
+              },
+              "metadata": {
+                "sequenceNumber": 1.0
+              }
+            }
+          }
+        },
+        {
+          "recorded_at": "2026-09-06T23:10:31.860929+00:00",
+          "layer": "sdk",
+          "observation": "event_yielded",
+          "request_index": 1,
+          "event_index": 2,
+          "event_type": "artifact_update",
+          "payload": {
+            "artifactUpdate": {
+              "taskId": "gap3-task-a",
+              "contextId": "gap3-context-a",
+              "artifact": {
+                "artifactId": "gap3-artifact-a",
+                "name": "gap3-canary",
+                "parts": [
+                  {
+                    "text": "002 CANARY-ARTIFACT-A",
+                    "mediaType": "text/plain"
+                  }
+                ],
+                "metadata": {
+                  "sequenceNumber": 2.0,
+                  "sourceTaskId": "gap3-task-a",
+                  "sourceContextId": "gap3-context-a"
+                }
+              },
+              "lastChunk": true,
+              "metadata": {
+                "sequenceNumber": 2.0
+              }
+            }
+          }
+        },
+        {
+          "recorded_at": "2026-09-06T23:10:31.861930+00:00",
+          "layer": "sdk",
+          "observation": "event_yielded",
+          "request_index": 1,
+          "event_index": 3,
+          "event_type": "status_update",
+          "payload": {
+            "statusUpdate": {
+              "taskId": "gap3-task-a",
+              "contextId": "gap3-context-a",
+              "status": {
+                "state": "TASK_STATE_COMPLETED",
+                "message": {
+                  "messageId": "gap3-message-3-gap3-task-a",
+                  "contextId": "gap3-context-a",
+                  "taskId": "gap3-task-a",
+                  "role": "ROLE_AGENT",
+                  "parts": [
+                    {
+                      "text": "003 CANARY-STATUS-A",
+                      "mediaType": "text/plain"
+                    }
+                  ],
+                  "metadata": {
+                    "sequenceNumber": 3.0
+                  }
+                }
+              },
+              "metadata": {
+                "sequenceNumber": 3.0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "wrapper": {
+      "observations": [
+        {
+          "recorded_at": "2026-09-06T23:10:31.816931+00:00",
+          "layer": "wrapper",
+          "observation": "request_prepared",
+          "request_index": 1,
+          "text": "EA-C0",
+          "task_id": "",
+          "context_id": "",
+          "streaming": true
+        },
+        {
+          "recorded_at": "2026-09-06T23:10:31.860929+00:00",
+          "layer": "wrapper",
+          "observation": "event_processed",
+          "request_index": 1,
+          "event_index": 1,
+          "event_type": "task",
+          "extracted_text": [
+            "001 CANARY-TASK-A"
+          ],
+          "accumulated_text": "001 CANARY-TASK-A",
+          "selected_task_id": "gap3-task-a",
+          "selected_context_id": "gap3-context-a",
+          "selected_state": 2
+        },
+        {
+          "recorded_at": "2026-09-06T23:10:31.860929+00:00",
+          "layer": "wrapper",
+          "observation": "event_processed",
+          "request_index": 1,
+          "event_index": 2,
+          "event_type": "artifact_update",
+          "extracted_text": [
+            "002 CANARY-ARTIFACT-A"
+          ],
+          "accumulated_text": "001 CANARY-TASK-A\n002 CANARY-ARTIFACT-A",
+          "selected_task_id": "gap3-task-a",
+          "selected_context_id": "gap3-context-a",
+          "selected_state": 2
+        },
+        {
+          "recorded_at": "2026-09-06T23:10:31.861930+00:00",
+          "layer": "wrapper",
+          "observation": "event_processed",
+          "request_index": 1,
+          "event_index": 3,
+          "event_type": "status_update",
+          "extracted_text": [
+            "003 CANARY-STATUS-A"
+          ],
+          "accumulated_text": "001 CANARY-TASK-A\n002 CANARY-ARTIFACT-A\n003 CANARY-STATUS-A",
+          "selected_task_id": "gap3-task-a",
+          "selected_context_id": "gap3-context-a",
+          "selected_state": 3
+        },
+        {
+          "recorded_at": "2026-09-06T23:10:31.864956+00:00",
+          "layer": "wrapper",
+          "observation": "response_returned",
+          "request_index": 1,
+          "text": "001 CANARY-TASK-A\n002 CANARY-ARTIFACT-A\n003 CANARY-STATUS-A",
+          "task_id": "gap3-task-a",
+          "context_id": "gap3-context-a",
+          "state": 3,
+          "requires_input": false
+        }
+      ]
+    },
+    "orchestrator": {
+      "observations": [
+        {
+          "recorded_at": "2026-09-06T23:10:31.729240+00:00",
+          "observation": "experiment_started",
+          "run_id": "gap3-ea-c0-3cf620219f8f4fff8cee2619e1b24e80",
+          "scenario_id": "EA-C0",
+          "server_url": "http://127.0.0.1:8010",
+          "streaming": true
+        },
+        {
+          "recorded_at": "2026-09-06T23:10:31.756279+00:00",
+          "observation": "plan_created",
+          "user_message": "Run the deterministic Gap 3 orchestration experiment.",
+          "discovered_agent": {
+            "name": "External Security Reviewer Test Agent",
+            "description": "Loopback-only deterministic A2A external-review research fixture.",
+            "supportedInterfaces": [
+              {
+                "url": "http://127.0.0.1:8010",
+                "protocolBinding": "JSONRPC",
+                "protocolVersion": "1.0"
+              }
+            ],
+            "version": "1.0.0",
+            "capabilities": {
+              "streaming": true,
+              "pushNotifications": false,
+              "extendedAgentCard": false
+            },
+            "defaultInputModes": [
+              "text/plain"
+            ],
+            "defaultOutputModes": [
+              "text/plain"
+            ],
+            "skills": [
+              {
+                "id": "gap3-external-review",
+                "name": "Gap 3 external-review fixture",
+                "description": "Emits deterministic coherent or identifier-spliced A2A response events.",
+                "tags": [
+                  "security research",
+                  "event attribution",
+                  "deterministic fixture"
+                ],
+                "examples": [
+                  "EA-C0",
+                  "EA-C2",
+                  "EA-TM1",
+                  "EA-TM2",
+                  "EA-A3"
+                ],
+                "inputModes": [
+                  "text/plain"
+                ],
+                "outputModes": [
+                  "text/plain"
+                ]
+              }
+            ]
+          },
+          "plan": {
+            "mode": "delegate",
+            "reason": "deterministic Gap 3 experiment",
+            "steps": [
+              {
+                "step_id": 1,
+                "agent_index": 0,
+                "agent_name": "External Security Reviewer Test Agent",
+                "remote_url": "http://127.0.0.1:8010",
+                "task": "Execute EA-C0 through the host orchestrator.",
+                "depends_on": []
+              }
+            ]
+          }
+        },
+        {
+          "recorded_at": "2026-09-06T23:10:31.756279+00:00",
+          "observation": "delegation_prepared",
+          "agent_name": "External Security Reviewer Test Agent",
+          "assigned_task": "Execute EA-C0 through the host orchestrator.",
+          "dependency_results": [],
+          "delegated_text": "EA-C0"
+        },
+        {
+          "recorded_at": "2026-09-06T23:10:31.864956+00:00",
+          "observation": "initial_result_returned",
+          "result": {
+            "plan": {
+              "mode": "delegate",
+              "reason": "deterministic Gap 3 experiment",
+              "steps": [
+                {
+                  "step_id": 1,
+                  "agent_index": 0,
+                  "agent_name": "External Security Reviewer Test Agent",
+                  "remote_url": "http://127.0.0.1:8010",
+                  "task": "Execute EA-C0 through the host orchestrator.",
+                  "depends_on": []
+                }
+              ]
+            },
+            "step_results": [
+              {
+                "step_id": 1,
+                "agent_name": "External Security Reviewer Test Agent",
+                "remote_url": "http://127.0.0.1:8010",
+                "response": "001 CANARY-TASK-A\n002 CANARY-ARTIFACT-A\n003 CANARY-STATUS-A",
+                "response_canaries": [
+                  "CANARY-ARTIFACT-A",
+                  "CANARY-STATUS-A",
+                  "CANARY-TASK-A"
+                ],
+                "error": "",
+                "task_id": "gap3-task-a",
+                "context_id": "gap3-context-a",
+                "input_required": false
+              }
+            ],
+            "response": "001 CANARY-TASK-A\n002 CANARY-ARTIFACT-A\n003 CANARY-STATUS-A",
+            "response_canaries": [
+              "CANARY-ARTIFACT-A",
+              "CANARY-STATUS-A",
+              "CANARY-TASK-A"
+            ],
+            "input_required": false
+          },
+          "pending": null
+        }
+      ],
+      "initial_result": {
+        "plan": {
+          "mode": "delegate",
+          "reason": "deterministic Gap 3 experiment",
+          "steps": [
+            {
+              "step_id": 1,
+              "agent_index": 0,
+              "agent_name": "External Security Reviewer Test Agent",
+              "remote_url": "http://127.0.0.1:8010",
+              "task": "Execute EA-C0 through the host orchestrator.",
+              "depends_on": []
+            }
+          ]
+        },
+        "step_results": [
+          {
+            "step_id": 1,
+            "agent_name": "External Security Reviewer Test Agent",
+            "remote_url": "http://127.0.0.1:8010",
+            "response": "001 CANARY-TASK-A\n002 CANARY-ARTIFACT-A\n003 CANARY-STATUS-A",
+            "response_canaries": [
+              "CANARY-ARTIFACT-A",
+              "CANARY-STATUS-A",
+              "CANARY-TASK-A"
+            ],
+            "error": "",
+            "task_id": "gap3-task-a",
+            "context_id": "gap3-context-a",
+            "input_required": false
+          }
+        ],
+        "response": "001 CANARY-TASK-A\n002 CANARY-ARTIFACT-A\n003 CANARY-STATUS-A",
+        "response_canaries": [
+          "CANARY-ARTIFACT-A",
+          "CANARY-STATUS-A",
+          "CANARY-TASK-A"
+        ],
+        "input_required": false
+      },
+      "pending_after_initial": null,
+      "continuation_result": null,
+      "pending_after_continuation": null
+    },
+    "host_output": {
+      "mode": "single_step_passthrough",
+      "initial_response": "001 CANARY-TASK-A\n002 CANARY-ARTIFACT-A\n003 CANARY-STATUS-A",
+      "continuation_response": ""
+    }
+  },
+  "measurements": {
+    "sdk_event_count": 3,
+    "wrapper_response_count": 1,
+    "all_wrapper_canaries": [
+      "CANARY-ARTIFACT-A",
+      "CANARY-STATUS-A",
+      "CANARY-TASK-A"
+    ],
+    "wrapper_canary_counts": {
+      "CANARY-ARTIFACT-A": 1,
+      "CANARY-STATUS-A": 1,
+      "CANARY-TASK-A": 1
+    },
+    "host_canary_counts": {
+      "CANARY-ARTIFACT-A": 1,
+      "CANARY-STATUS-A": 1,
+      "CANARY-TASK-A": 1
+    },
+    "attack_canaries": [],
+    "attack_canaries_reaching_wrapper": [],
+    "attack_canaries_reaching_step_result": [],
+    "attack_canaries_reaching_host_output": [],
+    "foreign_task_or_context_seen_by_sdk": false,
+    "step_result_uses_task_b_handles": false,
+    "pending_handles_overwritten": false,
+    "continuation_sent_with_task_b_handles": false,
+    "operational_error": false
+  },
+  "error": null
+}

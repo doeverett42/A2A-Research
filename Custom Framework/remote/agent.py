@@ -1,5 +1,5 @@
-#Remote AI agent
-#Contains the intelligence of the remote agents
+#remote ai agent
+#contains the model-backed behavior shared by all five normal agents
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Protocol
 
 from common.logging import logger
 from common.ollama_client import OllamaClient
-from common.prompts import REMOTE_AGENT_RESPONSE_SYSTEM_PROMPT, build_prompt
+from common.prompts import REMOTE_AGENT_RESPONSE_SYSTEM_PROMPT
 
 
 REMOTE_AGENT_RESPONSE_SCHEMA = {
@@ -38,9 +38,12 @@ class RemoteAgentResponse:
     def requires_input(self) -> bool:
         return self.status == "input_required"
 
-#ensure that every remote agent includes the method run()
+#keeps the executor independent from one specific model implementation
 class RemoteAgentProtocol(Protocol):
     async def run(self, query: str) -> RemoteAgentResponse:
+        pass
+
+    async def close(self) -> None:
         pass
 
 
@@ -60,7 +63,7 @@ class OllamaRemoteAgent:
             system = "\n\n".join(
                 [self.system_prompt, REMOTE_AGENT_RESPONSE_SYSTEM_PROMPT]
             ),
-            prompt = build_prompt(query),
+            prompt = query.strip(),
             temperature = 0.2,
             schema = REMOTE_AGENT_RESPONSE_SCHEMA
         )
@@ -72,6 +75,9 @@ class OllamaRemoteAgent:
             status = str(result["status"]),
             message = str(result["message"]).strip()
         )
+
+    async def close(self) -> None:
+        await self.client.close()
 
 
 def _response_data(response: str) -> dict[str, object]:

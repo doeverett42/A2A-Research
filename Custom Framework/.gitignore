@@ -3,8 +3,33 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.cleanup-backup/
+.env
+.env.*
+!.env.example
+tmp/
 logs/*.log
-logs/audit/
 data/task_stores/
 A2A Security Plan.docx
 A2A_LITERATURE_GAPS_AND_EXPERIMENTS.md
+
+#ignore new run output, but retain the reports linked from logs/readme.md
+logs/audit/**
+!logs/audit/gap3_runs/
+!logs/audit/gap3_live_runs/
+!logs/audit/cyber_baselines/
+!logs/audit/gap3_runs/gap3-ea-a3-e974043a8f6748e397252b56394a2851.json
+!logs/audit/gap3_runs/gap3-ea-c0-3cf620219f8f4fff8cee2619e1b24e80.json
+!logs/audit/gap3_live_runs/gap3-live-tm-1-control-e242fe1684de47049e40713fbca90c27.json
+!logs/audit/gap3_live_runs/gap3-live-tm-1-attack-39e559d4c08642449d39e352ef4caba3.json
+!logs/audit/gap3_live_runs/gap3-live-tm-2-control-0a49df85818344b6a8989e5440d7acf5.json
+!logs/audit/gap3_live_runs/gap3-live-tm-2-attack-bfe443ce3b364c168ad2091a3123e9ce.json
+!logs/audit/gap3_live_runs/gap3-live-do-2-control-bacc69f93e704a3ba88716044035b530.json
+!logs/audit/gap3_live_runs/gap3-live-do-2-attack-69e593b71d2d4c1f9ffd2743d7d8eda3.json
+!logs/audit/gap3_live_runs/gap3-live-do-3-control-7d7f48d68fa141a4972d98e8f7976dbe.json
+!logs/audit/gap3_live_runs/gap3-live-do-3-attack-f6756a746de34f43b651ec4153bb1e95.json
+!logs/audit/gap3_live_runs/gap3-live-do-5-control-5b466263ed724c02b36eef076f2d4586.json
+!logs/audit/gap3_live_runs/gap3-live-do-5-attack-69b8a6ead69a4dfaad88795d364b48ba.json
+!logs/audit/gap3_live_runs/gap3-live-do-6-control-9f01b06024f8484eb2a227c061b0da25.json
+!logs/audit/gap3_live_runs/gap3-live-do-6-attack-b747e593cb504addaf64a0e1d2a38b5d.json
+!logs/audit/cyber_baselines/cyber-baseline-cyber-sandbox-a-95fb5b71f6594379800fca522ce0b8cb.json

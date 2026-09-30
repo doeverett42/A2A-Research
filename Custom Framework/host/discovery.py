@@ -1,5 +1,5 @@
-#Host agent discovery
-#fetches agent cards and reads remote URLs from them
+#host agent discovery
+#fetches agent cards and reads remote urls from them
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from a2a.client import A2ACardResolver
 from a2a.types import AgentCard
 
 from common.logging import logger
+from common.services import validate_loopback_url
 
 
 class RemoteAgentInfo:
@@ -55,16 +56,25 @@ class AgentDiscovery:
 
     async def discover(self) -> list[RemoteAgentInfo]:
         agents = []
-        httpx_client = httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_seconds))
+        httpx_client = httpx.AsyncClient(
+            timeout = httpx.Timeout(self.timeout_seconds)
+        )
 
         try:
             for agent_card_url in self.agent_card_urls:
                 try:
+                    validate_loopback_url(agent_card_url)
                     resolver = A2ACardResolver(httpx_client, agent_card_url)
                     card = await resolver.get_agent_card()
                     agent = RemoteAgentInfo(agent_card_url, card)
+                    validate_loopback_url(agent.url)
                     agents.append(agent)
-                    logger.info("Discovered remote agent %s at %s from card %s", card.name, agent.url, agent_card_url)
+                    logger.info(
+                        "Discovered remote agent %s at %s from card %s",
+                        card.name,
+                        agent.url,
+                        agent_card_url
+                    )
                 except Exception as e:
                     logger.warning("Could not discover remote agent card at %s: %s", agent_card_url, e)
         finally:

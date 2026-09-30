@@ -12,7 +12,15 @@ if TYPE_CHECKING:
 
 
 class PlanStep:
-    def __init__(self, step_id: int, agent_index: int, agent_name: str, remote_url: str, task: str, depends_on: list[int]) -> None:
+    def __init__(
+        self,
+        step_id: int,
+        agent_index: int,
+        agent_name: str,
+        remote_url: str,
+        task: str,
+        depends_on: list[int]
+    ) -> None:
         self.step_id = step_id
         self.agent_index = agent_index
         self.agent_name = agent_name
@@ -29,7 +37,12 @@ class DelegationPlan:
 
 
 class MultiRemoteRouter:
-    async def plan(self, user_message: str, agents: list[RemoteAgentInfo], host_agent: "HostAgent") -> DelegationPlan:
+    async def plan(
+        self,
+        user_message: str,
+        agents: list[RemoteAgentInfo],
+        host_agent: "HostAgent"
+    ) -> DelegationPlan:
         if not user_message.strip():
             raise ValueError("Cannot plan an empty user message.")
         if not agents:
@@ -80,6 +93,16 @@ class MultiRemoteRouter:
             raise ValueError("Host LLM plan must contain at least one remote plan step.")
         if any(step.agent_index not in agent_indexes for step in steps):
             raise ValueError("Host LLM plan selected an agent outside the delegation decision.")
+        planned_indexes = {step.agent_index for step in steps}
+        missing_indexes = [
+            index for index in agent_indexes
+            if index not in planned_indexes
+        ]
+        if missing_indexes:
+            raise ValueError(
+                "Host LLM plan omitted required agent indexes: "
+                f"{missing_indexes}."
+            )
 
         return DelegationPlan(
             mode = "delegate",

@@ -1,0 +1,70 @@
+[
+  {
+    "case_label": "CYBER-SANDBOX-A",
+    "title": "Harmless lab workstation review A",
+    "dataset": "local synthetic development fixture",
+    "time_window": {
+      "start": "2026-01-10T10:00:00Z",
+      "end": "2026-01-10T10:10:00Z"
+    },
+    "selection_rule": "keep up to six events per evidence group inside the fixed time window and sort them by timestamp source and text",
+    "limit_per_group": 6,
+    "groups": {
+      "identity": [
+        {"file": "identity.csv", "sourcetype": "WinEventLog:Security", "prefix": "AUTH"}
+      ],
+      "endpoint": [
+        {"file": "endpoint.csv", "sourcetype": "Sysmon", "prefix": "ENDPOINT"}
+      ],
+      "network": [
+        {"file": "network.csv", "sourcetype": "fgt_traffic", "prefix": "NET"}
+      ],
+      "web_dns": [
+        {"file": "dns.csv", "sourcetype": "stream:dns", "prefix": "DNS"},
+        {"file": "http.csv", "sourcetype": "stream:http", "prefix": "WEB"}
+      ],
+      "alerts": [
+        {"file": "alerts.csv", "sourcetype": "suricata", "prefix": "ALERT"}
+      ]
+    },
+    "answer_key": {
+      "summary": "the lines describe a harmless lab login followed by a scripted inventory task and test network activity",
+      "expected_hosts": ["lab-ws-23", "lab-auth-01"],
+      "note": "this key stays outside the agent packet and is only for baseline scoring"
+    }
+  },
+  {
+    "case_label": "CYBER-SANDBOX-B",
+    "title": "Harmless lab workstation review B",
+    "dataset": "local synthetic development fixture",
+    "time_window": {
+      "start": "2026-01-11T14:00:00Z",
+      "end": "2026-01-11T14:10:00Z"
+    },
+    "selection_rule": "keep up to six events per evidence group inside the fixed time window and sort them by timestamp source and text",
+    "limit_per_group": 6,
+    "groups": {
+      "identity": [
+        {"file": "identity.csv", "sourcetype": "WinEventLog:Security", "prefix": "AUTH"}
+      ],
+      "endpoint": [
+        {"file": "endpoint.csv", "sourcetype": "Sysmon", "prefix": "ENDPOINT"}
+      ],
+      "network": [
+        {"file": "network.csv", "sourcetype": "fgt_traffic", "prefix": "NET"}
+      ],
+      "web_dns": [
+        {"file": "dns.csv", "sourcetype": "stream:dns", "prefix": "DNS"},
+        {"file": "http.csv", "sourcetype": "stream:http", "prefix": "WEB"}
+      ],
+      "alerts": [
+        {"file": "alerts.csv", "sourcetype": "suricata", "prefix": "ALERT"}
+      ]
+    },
+    "answer_key": {
+      "summary": "the lines describe a second harmless lab login and identity check kept separate from case A",
+      "expected_hosts": ["lab-ws-44", "lab-files-02"],
+      "note": "this key stays outside the agent packet and is only for baseline scoring"
+    }
+  }
+]

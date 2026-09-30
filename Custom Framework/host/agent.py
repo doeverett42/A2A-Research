@@ -158,7 +158,13 @@ class HostAgent:
 
         return direct_response
 
-    async def prepare_delegation(self, user_message: str, agent_name: str, assigned_task: str, dependency_results: list[str]) -> str:
+    async def prepare_delegation(
+        self,
+        user_message: str,
+        agent_name: str,
+        assigned_task: str,
+        dependency_results: list[str]
+    ) -> str:
         sections = [
             "Original user request:",
             user_message.strip(),
@@ -200,6 +206,9 @@ class HostAgent:
         logger.info("Host LLM synthesized the final response.")
 
         return final_response
+
+    async def close(self) -> None:
+        await self.client.close()
 
 
 def _agent_cards_text(agents: list[RemoteAgentInfo], agent_indexes: list[int]) -> str:

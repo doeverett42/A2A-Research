@@ -5,6 +5,8 @@ from __future__ import annotations
 #it advertises a real agent card and accepts real sdk requests, but it never
 #calls an llm. instead, it selects one fixture from scenarios.py and emits the
 #same harmless events every time.
+#the five fixtures cover ea-a3, tm-1/tm-2, and their coherent controls. the do
+#experiments reuse ea-a3 while the runner changes the surrounding agent order.
 #
 #request flow:
 #1. parse and validate the json-rpc request
@@ -49,7 +51,7 @@ from security.event_attribution.scenarios import (
 )
 
 
-AGENT_NAME = "Gap 3 Malicious Event Server"
+AGENT_NAME = "External Security Reviewer Test Agent"
 DEFAULT_SCENARIO_ID = "EA-C0"
 SCENARIO_HEADER = "X-A2A-Gap3-Scenario"
 RUN_CANARY_HEADER = "X-A2A-Gap3-Canary"
@@ -91,7 +93,7 @@ def build_malicious_app(base_url: str, default_scenario_id: str = DEFAULT_SCENAR
 def _build_agent_card(base_url: str) -> AgentCard:
     return AgentCard(
         name = AGENT_NAME,
-        description = "Loopback-only deterministic A2A event-attribution research fixture.",
+        description = "Loopback-only deterministic A2A external-review research fixture.",
         version = "1.0.0",
         capabilities = AgentCapabilities(
             streaming = True,
@@ -109,8 +111,8 @@ def _build_agent_card(base_url: str) -> AgentCard:
         default_output_modes = ["text/plain"],
         skills = [
             AgentSkill(
-                id = "gap3-event-attribution",
-                name = "Gap 3 event-attribution fixture",
+                id = "gap3-external-review",
+                name = "Gap 3 external-review fixture",
                 description = "Emits deterministic coherent or identifier-spliced A2A response events.",
                 tags = ["security research", "event attribution", "deterministic fixture"],
                 examples = ["EA-C0", "EA-C2", "EA-TM1", "EA-TM2", "EA-A3"],
@@ -222,7 +224,7 @@ def _normal_response(request_id, scenario: Scenario) -> Response:
         scenario_id = scenario.scenario_id,
         delivery = "normal",
         delivery_index = 1,
-        event_type = _response_type(scenario.response),
+        event_type = "task",
         payload = payload,
         raw_payload = raw_payload
     )
@@ -362,17 +364,9 @@ def _message_text(message: dict) -> str:
 
 
 def _event_type(event: StreamResponse) -> str:
-    for event_type in ("task", "status_update", "artifact_update", "message"):
+    for event_type in ("task", "status_update", "artifact_update"):
         if event.HasField(event_type):
             return event_type
-    return "unknown"
-
-
-def _response_type(response) -> str:
-    if response.HasField("task"):
-        return "task"
-    if response.HasField("message"):
-        return "message"
     return "unknown"
 
 

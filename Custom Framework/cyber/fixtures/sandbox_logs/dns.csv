@@ -1,0 +1,5 @@
+_time,_raw
+2026-01-10T10:05:00Z,"source_ip=192.0.2.23 query=alpha-lab.invalid record_type=A answer=198.51.100.20"
+2026-01-10T10:06:30Z,"source_ip=192.0.2.23 query=unused-alpha.invalid record_type=A result=NXDOMAIN"
+2026-01-11T14:05:00Z,"source_ip=192.0.2.44 query=beta-lab.invalid record_type=A answer=203.0.113.40"
+2026-01-11T14:06:30Z,"source_ip=192.0.2.44 query=unused-beta.invalid record_type=A result=NXDOMAIN"

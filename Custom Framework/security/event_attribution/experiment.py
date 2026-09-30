@@ -25,20 +25,27 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import re
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 from uuid import uuid4
 
 from google.protobuf.json_format import MessageToDict
 
 from common.audit import AUDIT_HEADER, read_audit_events
+from common.services import validate_loopback_url
 from host.client import RemoteAgentClient
 from host.discovery import AgentDiscovery, RemoteAgentInfo
 from host.orchestrator import HostOrchestrator, OrchestrationResult
 from host.router import DelegationPlan, PlanStep
+from security.event_attribution.reporting import (
+    canaries as _canaries,
+    pending_snapshot as _pending_snapshot,
+    plan_snapshot as _plan_snapshot,
+    result_snapshot as _result_snapshot,
+    timestamp as _timestamp,
+    transport_requests as _transport_requests,
+    write_report as _write_report
+)
 from security.event_attribution.scenarios import (
     CONTEXT_B_ID,
     TASK_B_ID,
@@ -57,18 +64,10 @@ DEFAULT_CONTINUATION = "CANARY-HOST-CONTINUATION"
 
 ATTACK_CANARIES = {
     "EA-C0": [],
-    "EA-C1": [],
     "EA-C2": [],
     "EA-TM1": ["CANARY-TM1-SPLIT-B-A"],
     "EA-TM2": ["CANARY-TM2-SPLIT-A-B"],
-    "EA-A1": ["CANARY-FOREIGN-ARTIFACT-B"],
-    "EA-A2": ["CANARY-CONTEXT-B"],
-    "EA-A3": ["CANARY-FORGED-INPUT-B"],
-    "EA-A4": ["CANARY-FOREIGN-MESSAGE-B"],
-    "EA-A5": ["CANARY-OUT-OF-ORDER-A"],
-    "EA-A6": ["CANARY-POST-TERMINAL-A"],
-    "EA-A7": ["CANARY-EQUIVOCATION-ONE", "CANARY-EQUIVOCATION-TWO"],
-    "EA-A9": ["CANARY-BUDGET-FOREIGN-B"]
+    "EA-A3": ["CANARY-FORGED-INPUT-B"]
 }
 
 
@@ -142,6 +141,9 @@ class DeterministicRouter:
 
         #there is no model choice here. every run gets the same one-step plan.
         agent = agents[0]
+        #the discovery url is local, but the card supplies the execution url.
+        #validate that second url too so a card cannot redirect this test run.
+        validate_loopback_url(agent.url)
         plan = DelegationPlan(
             mode = "delegate",
             reason = "deterministic Gap 3 experiment",
@@ -175,7 +177,7 @@ async def run_scenario(
     scenario_id = scenario_id.upper()
     if scenario_id not in scenario_catalog():
         raise ValueError(f"Unknown Gap 3 scenario: {scenario_id}")
-    _validate_loopback_url(server_url)
+    validate_loopback_url(server_url)
 
     #the run and audit ids tie the outgoing request to the exact server events
     #that come back later. this keeps two nearby runs from sharing evidence.
@@ -284,7 +286,11 @@ async def run_scenario(
             "completed_at": _timestamp(),
             "server_url": server_url,
             "streaming": True,
-            "continued_pending_task": bool(initial_result and initial_result.input_required and continue_pending)
+            "continued_pending_task": bool(
+                initial_result
+                and initial_result.input_required
+                and continue_pending
+            )
         },
         "layers": {
             "transport": {
@@ -316,7 +322,9 @@ async def run_scenario(
             sdk_observations,
             wrapper_observations,
             initial_result,
+            continuation_result,
             pending_after_initial,
+            pending_after_continuation,
             transport_events,
             error
         ),
@@ -335,7 +343,9 @@ def _measurements(
     sdk_observations: list[dict],
     wrapper_observations: list[dict],
     initial_result: OrchestrationResult | None,
+    continuation_result: OrchestrationResult | None,
     pending_after_initial: dict | None,
+    pending_after_continuation: dict | None,
     transport_events: list[dict],
     error: dict | None
 ) -> dict:
@@ -364,6 +374,16 @@ def _measurements(
         and pending_after_initial["context_id"] == CONTEXT_B_ID
     )
     serialized_sdk = json.dumps(sdk_observations)
+    final_result = continuation_result or initial_result
+    final_input_required = bool(
+        final_result and final_result.input_required
+    )
+    run_completed = bool(
+        final_result
+        and not error
+        and not final_input_required
+        and pending_after_continuation is None
+    )
 
     return {
         "sdk_event_count": len(sdk_observations),
@@ -395,85 +415,11 @@ def _measurements(
         "continuation_sent_with_task_b_handles": _continuation_used_task_b(
             transport_events
         ),
+        "continuation_attempted": continuation_result is not None,
+        "final_input_required": final_input_required,
+        "run_completed": run_completed,
         "operational_error": error is not None
     }
-
-
-def _result_snapshot(result: OrchestrationResult | None) -> dict | None:
-    if result is None:
-        return None
-    return {
-        "plan": _plan_snapshot(result.plan),
-        "step_results": [
-            {
-                "step_id": step_result.step.step_id,
-                "agent_name": step_result.step.agent_name,
-                "remote_url": step_result.step.remote_url,
-                "response": step_result.response,
-                "error": step_result.error,
-                "task_id": step_result.task_id,
-                "context_id": step_result.context_id,
-                "input_required": step_result.input_required
-            }
-            for step_result in result.step_results
-        ],
-        "response": result.response,
-        "input_required": result.input_required
-    }
-
-
-def _plan_snapshot(plan: DelegationPlan) -> dict:
-    return {
-        "mode": plan.mode,
-        "reason": plan.reason,
-        "steps": [
-            {
-                "step_id": step.step_id,
-                "agent_index": step.agent_index,
-                "agent_name": step.agent_name,
-                "remote_url": step.remote_url,
-                "task": step.task,
-                "depends_on": step.depends_on
-            }
-            for step in plan.steps
-        ]
-    }
-
-
-def _pending_snapshot(pending) -> dict | None:
-    if pending is None or not pending.step_results:
-        return None
-    waiting_result = pending.step_results[-1]
-    return {
-        "step_index": pending.step_index,
-        "step_id": waiting_result.step.step_id,
-        "task_id": waiting_result.task_id,
-        "context_id": waiting_result.context_id,
-        "response": waiting_result.response,
-        "input_required": waiting_result.input_required
-    }
-
-
-def _transport_requests(events: list[dict]) -> list[dict]:
-    requests = []
-    for event in events:
-        if event.get("event") != "malicious_request_parsed":
-            continue
-        raw_payload = event.get("raw_payload", "")
-        try:
-            payload = json.loads(raw_payload)
-        except (TypeError, ValueError):
-            payload = None
-        requests.append(
-            {
-                "timestamp": event.get("timestamp"),
-                "request_id": event.get("request_id"),
-                "method": event.get("method"),
-                "raw_payload": raw_payload,
-                "payload": payload
-            }
-        )
-    return requests
 
 
 def _continuation_used_task_b(events: list[dict]) -> bool:
@@ -488,10 +434,6 @@ def _continuation_used_task_b(events: list[dict]) -> bool:
     return False
 
 
-def _canaries(text: str) -> list[str]:
-    return sorted(set(re.findall(r"CANARY-[A-Z0-9-]+", text)))
-
-
 def _canary_counts(text: str) -> dict[str, int]:
     return {
         canary: text.count(canary)
@@ -503,36 +445,13 @@ def _matching_canaries(expected: list[str], text: str) -> list[str]:
     return [canary for canary in expected if canary in text]
 
 
-def _write_report(report: dict, output_directory: Path) -> Path:
-    output_directory.mkdir(parents = True, exist_ok = True)
-    report_path = output_directory / f"{report['run']['run_id']}.json"
-    report_path.write_text(
-        json.dumps(report, indent = 2, ensure_ascii = False) + "\n",
-        encoding = "utf-8"
-    )
-    return report_path
-
-
-def _validate_loopback_url(server_url: str) -> None:
-    parsed = urlparse(server_url)
-    if parsed.scheme not in ("http", "https") or parsed.hostname not in (
-        "127.0.0.1",
-        "localhost",
-        "::1"
-    ):
-        raise ValueError("The Gap 3 experiment runner only permits loopback server URLs.")
-
-
-def _timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description = "Run Gap 3 through the deterministic host orchestrator."
     )
     parser.add_argument(
         "--scenario",
+        type = str.upper,
         choices = list(scenario_catalog()),
         default = "EA-A3"
     )
@@ -577,7 +496,8 @@ async def _run_from_args(args: argparse.Namespace) -> bool:
             f"{measurements['continuation_sent_with_task_b_handles']}"
         )
         print(f"operational error: {measurements['operational_error']}")
-        completed = completed and not measurements["operational_error"]
+        print(f"run completed: {measurements['run_completed']}")
+        completed = completed and measurements["run_completed"]
 
     return completed
 

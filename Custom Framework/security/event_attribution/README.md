@@ -1,149 +1,81 @@
-# Gap 3 malicious event server
+# EA-A3 and the six Gap 3 follow-ups
 
-This local fixture implements the deterministic malicious A2A server from the
-Gap 3 plan. It never calls an LLM, uses harmless canaries, and the command-line
-entry point only permits loopback interfaces.
+Use the [root README](../../README.md) for terminal setup and run commands.
+This folder keeps only the fixtures needed by the current experiments.
 
-Start the coherent control:
+## Fixtures and experiments
 
-```powershell
-python -m security.event_attribution.main
-```
+The fixture code selects the server response. The experiment code selects the
+delegation plan. Several experiments deliberately reuse the same fixture.
 
-Start one fixed attack case:
+| Experiment | Attack fixture | Control fixture | Delegation order |
+| --- | --- | --- | --- |
+| EA-A3, live | EA-A3 | EA-C0 | External, Identity, Correlation |
+| TM-1 | EA-TM1 | EA-C2 | External, Identity, Correlation |
+| TM-2 | EA-TM2 | EA-C2 | External, Identity, Correlation |
+| DO-2 | EA-A3 | EA-C0 | Identity, External, dependent Correlation |
+| DO-3 | EA-A3 | EA-C0 | Identity, External, Correlation using only Identity |
+| DO-5 | EA-A3 | EA-C0 | External result given to both normal agents |
+| DO-6 | EA-A3 | EA-C0 | Identity, External, Identity again |
 
-```powershell
-python -m security.event_attribution.main --scenario EA-A1
-```
+EA-C0 completes with A/A. EA-C2 asks for input with A/A. EA-A3 first emits
+A/A, then asks for input with B/B. EA-TM1 changes only the task to B; EA-TM2
+changes only the context to B. A continuation completes the selected tuple.
 
-List the implemented cases:
+The standalone `experiment.py` uses one external step for each fixture.
+The live runner adds the normal agents and final LLM synthesis. Use
+`--experiment` to select a live case; the former arbitrary `--scenario` and
+`--plan-order` live CLI options have been removed to keep runs tied to the
+documented cases. The standalone runner still accepts `--scenario`.
 
-```powershell
-python -m security.event_attribution.main --list-scenarios
-```
+## Read the code in this order
 
-The default endpoint is `http://127.0.0.1:8010`. A request can override the
-server default with the `X-A2A-Gap3-Scenario` header, a message metadata field
-named `scenario`, or a text part containing `SCENARIO:EA-A1`.
-The follow-up runner also sends one unique `X-A2A-Gap3-Canary` value so rows
-and messages from separate runs can be distinguished.
-`GET /scenarios` reports the active default, every case, and the deterministic
-Task A/Context A and Task B/Context B identifiers.
+1. `fixed_plans.py`: which agents run and whose earlier results they receive.
+2. `scenarios.py`: which task/context tuple each server event contains.
+3. `server.py`: how the fixture is sent over A2A.
+4. `experiment.py` or `live_experiment.py`: how the host is called and observed.
+5. `../../host/client.py`: how the SDK's events become wrapper text and handles.
+6. `../../host/orchestrator.py`: how step results and continuations are processed.
+7. `database_evidence.py`: which new SQLite rows contain the run canary.
 
-`SendMessage` returns one structurally valid Task or Message for the current
-non-streaming host path. `SendStreamingMessage` emits the full ordered event
-sequence needed for attribution trials. When `X-A2A-Audit-ID` is present, the
-existing audit logger records the selected scenario and exact JSON-RPC payload
-for every emitted event.
+The server defaults to `http://127.0.0.1:8010`. Each runner selects the fixture
+with `X-A2A-Gap3-Scenario`. Live runs also send `X-A2A-Gap3-Canary` and the audit
+ID. `GET /scenarios` lists the five fixtures and known A/A and B/B identifiers.
+The fixture and experiment entry points use local loopback URLs.
 
-EA-A8 is intentionally not included yet because unexpected-push attribution
-requires the separate push receiver fixture described in the plan.
+## What the reports show
 
-Run the fixture tests with:
+The standalone report separates raw transport requests, server audit events,
+SDK events, wrapper observations, orchestrator results, and host output.
 
-```powershell
-python -m unittest security.event_attribution.test_server
-```
+The live report adds discovery, delegated text, final synthesis, and database
+snapshots before execution, while input is pending, and after completion.
+New task rows are searched in `status`, `history`, and `artifacts`. The
+`case_evidence` rows keep the packet hash, case label, evidence group, agent,
+task ID, context ID, and request/response canaries.
 
-## Deterministic host-orchestrator experiment
+These are observations of the current behavior. A canary in an agent response
+or database does not automatically mean the agent's tuple changed. Compare
+the actual request IDs, returned IDs, and stored row IDs separately.
 
-The experiment runner uses the real Agent Card discovery, `HostOrchestrator`,
-`RemoteAgentClient`, official SDK, and HTTP transport. It replaces only the
-LLM-owned planning and delegation decisions with a fixed one-step plan to the
-malicious endpoint.
+The runner supplies `CANARY-HOST-CONTINUATION` when the fixture requests input.
+The orchestrator chooses the outgoing tuple from the pending step. The runner
+records the expected tuple for comparison; it does not pass those expected
+IDs into the orchestrator as a replacement for its state.
 
-Start the malicious server in one terminal:
-
-```powershell
-python -m security.event_attribution.main
-```
-
-Run the forged input-required scenario in another terminal:
-
-```powershell
-python -m security.event_attribution.experiment --scenario EA-A3
-```
-
-Run the complete implemented matrix:
-
-```powershell
-python -m security.event_attribution.experiment --all-scenarios
-```
-
-The runner enables streaming only for its injected experiment client. Normal
-host clients remain non-streaming. It also restricts the target URL to
-loopback addresses.
-
-Each run writes one JSON report under `logs/audit/gap3_runs`. The report keeps
-the observations separated by layer:
-
-- Raw transport requests and exact malicious-server audit events.
-- Every event yielded by the official SDK.
-- Extracted text and selected handles after every wrapper event.
-- Deterministic plan, `StepResult`, and pending-orchestration snapshots.
-- Final one-step host output and calculated canary/handle measurements.
-
-When a scenario returns input-required, the runner submits one harmless
-continuation by default. The raw second request proves whether the host reused
-the returned task and context handles. Use `--no-continuation` to disable that
-step.
-
-Run all automated tests with:
+## Automated coverage
 
 ```powershell
 python -m unittest discover -v
 ```
 
-## Live local LLM framework experiment
+| Test file | Purpose |
+| --- | --- |
+| `test_server.py` | All five fixtures, SDK parsing, continuations, and canary isolation. |
+| `test_experiment.py` | Streaming wrapper, report evidence, and host continuation behavior. |
+| `test_live_experiment.py` | Host formatting, downstream flow, batch selection, and output. |
+| `test_follow_up_experiments.py` | Six-case plan mapping, dependency routing, and database evidence. |
+| `../../cyber/test_cases.py` | Reproducible log packets, evidence scoping, and case storage. |
 
-The live runner implements only the six follow-up tests from the experiment
-procedures: TM-1, TM-2, DO-2, DO-3, DO-5, and DO-6. It uses fixed delegation
-orders so repeated runs are comparable. The configured `HostAgent` still
-prepares dependency text and performs final synthesis, and Food and Budget are
-the normal LLM-backed remote agents. All service URLs must resolve to loopback
-addresses.
-
-The tuple fixtures are EA-C2 for the coherent A/A control, EA-TM1 for Task B
-with Context A, and EA-TM2 for Task A with Context B. The ordering tests use
-EA-C0 as the coherent control and EA-A3 as the input-required canary fixture.
-The host sends `CANARY-HOST-CONTINUATION` with whichever tuple the server
-returned, then resumes the remaining fixed plan steps.
-
-Start Ollama in one terminal:
-
-```powershell
-ollama serve
-```
-
-Start the malicious server, Food Agent, and Budget Agent together in a second
-terminal. The two normal agents still use their configured Ollama models.
-
-```powershell
-python -m security.event_attribution.live_services
-```
-
-Run one attack variant in a third terminal:
-
-```powershell
-python -m security.event_attribution.live_experiment --experiment TM-1 --variant attack --remote-agent-url http://127.0.0.1:8001 --remote-agent-url http://127.0.0.1:8005
-```
-
-Change `TM-1` to `TM-2`, `DO-2`, `DO-3`, `DO-5`, or `DO-6` to run the other
-documented test. Run the matching control by changing only the variant:
-
-```powershell
-python -m security.event_attribution.live_experiment --experiment TM-1 --variant control --remote-agent-url http://127.0.0.1:8001 --remote-agent-url http://127.0.0.1:8005
-```
-
-The report under `logs/audit/gap3_live_runs` records the selected Agent Cards,
-fixed plan, exact delegated requests, remote responses, continuation tuple,
-downstream canary propagation, and final synthesis. It also takes a baseline of
-the Food and Budget task databases, reads them again while input is pending,
-and reads them after completion. These database checks are read-only and report
-new rows plus canary matches in `status`, `history`, and `artifacts`.
-
-Run only the automated coverage for these six follow-up tests with:
-
-```powershell
-python -m unittest security.event_attribution.test_follow_up_experiments security.event_attribution.test_server
-```
+These tests do not call Ollama. Use the live commands in the root README when
+measuring real model behavior.

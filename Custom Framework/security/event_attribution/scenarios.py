@@ -8,8 +8,9 @@ from __future__ import annotations
 #task a/context a are the starting pair. task b/context b are the alternate pair
 #used to see whether another tuple, or half of another tuple, is accepted later.
 #the sequence numbers make the intended event order easy to verify in the logs.
-#a scenario has both a normal response and a streaming event list because the
-#standalone and live runners need to observe changes across several sdk events.
+#ea-a3 and the six follow-ups share five fixtures: two coherent controls and
+#three tuple changes. the do cases reuse ea-a3 at different places in the plan.
+#normal responses check sdk parsing; streaming shows the actual tuple change.
 
 from a2a.helpers import new_text_part
 from a2a.types import (
@@ -56,7 +57,7 @@ def build_scenario(
     run_canary: str = ""
 ) -> Scenario:
     try:
-        builder = _SCENARIO_BUILDERS[scenario_id.upper()]
+        _, builder = _SCENARIOS[scenario_id.upper()]
     except KeyError as e:
         raise ValueError(f"Unknown Gap 3 scenario: {scenario_id}") from e
     #build a fresh object every time so one run's added canary cannot leak into
@@ -121,13 +122,6 @@ def build_continuation_scenario(
     return scenario
 
 
-def build_ea_a3_continuation_scenario(
-    run_canary: str = ""
-) -> Scenario:
-    #keeps the original helper available for the first live experiment
-    return build_continuation_scenario("EA-A3", run_canary)
-
-
 def _add_run_canary(scenario: Scenario, run_canary: str) -> None:
     if not run_canary:
         return
@@ -147,8 +141,6 @@ def _append_response_canary(response, run_canary: str) -> None:
                 response.task.status.message.parts,
                 run_canary
             )
-    elif response.HasField("message"):
-        _append_part_canary(response.message.parts, run_canary)
 
 
 def _append_event_canary(event: StreamResponse, run_canary: str) -> None:
@@ -168,8 +160,6 @@ def _append_event_canary(event: StreamResponse, run_canary: str) -> None:
             event.artifact_update.artifact.parts,
             run_canary
         )
-    elif event.HasField("message"):
-        _append_part_canary(event.message.parts, run_canary)
 
 
 def _append_part_canary(parts, run_canary: str) -> None:
@@ -234,9 +224,7 @@ def _task(
     sequence_number: int,
     state: int,
     canary: str,
-    artifacts: list[Artifact] | None = None,
-    message_task_id: str | None = None,
-    message_context_id: str | None = None
+    artifacts: list[Artifact] | None = None
 ) -> Task:
     return Task(
         id = task_id,
@@ -244,8 +232,8 @@ def _task(
         status = TaskStatus(
             state = state,
             message = _message(
-                message_task_id or task_id,
-                message_context_id or context_id,
+                task_id,
+                context_id,
                 sequence_number,
                 canary
             )
@@ -328,29 +316,11 @@ def _status_event(
     )
 
 
-def _message_event(
-    task_id: str,
-    context_id: str,
-    sequence_number: int,
-    canary: str
-) -> StreamResponse:
-    return StreamResponse(
-        message = _message(
-            task_id,
-            context_id,
-            sequence_number,
-            canary
-        )
-    )
-
-
 def _completed_response(
     canary: str,
     artifacts: list[Artifact] | None = None,
     task_id: str = TASK_A_ID,
-    context_id: str = CONTEXT_A_ID,
-    message_task_id: str | None = None,
-    message_context_id: str | None = None
+    context_id: str = CONTEXT_A_ID
 ) -> SendMessageResponse:
     return SendMessageResponse(
         task = _task(
@@ -359,9 +329,7 @@ def _completed_response(
             3,
             TaskState.TASK_STATE_COMPLETED,
             canary,
-            artifacts = artifacts,
-            message_task_id = message_task_id,
-            message_context_id = message_context_id
+            artifacts = artifacts
         )
     )
 
@@ -397,133 +365,6 @@ def _coherent() -> Scenario:
                 TASK_A_ID,
                 CONTEXT_A_ID,
                 3,
-                TaskState.TASK_STATE_COMPLETED,
-                "CANARY-STATUS-A"
-            )
-        ]
-    )
-
-
-def _duplicate_status() -> Scenario:
-    duplicate = _status_event(
-        TASK_A_ID,
-        CONTEXT_A_ID,
-        2,
-        TaskState.TASK_STATE_WORKING,
-        "CANARY-DUPLICATE-STATUS-A"
-    )
-    artifact = _artifact(
-        "gap3-artifact-a",
-        3,
-        "CANARY-ARTIFACT-A",
-        TASK_A_ID,
-        CONTEXT_A_ID
-    )
-    return Scenario(
-        "EA-C1",
-        _SCENARIOS["EA-C1"][0],
-        _completed_response("CANARY-STATUS-A", artifacts = [artifact]),
-        [
-            _task_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                1,
-                TaskState.TASK_STATE_WORKING,
-                "CANARY-TASK-A"
-            ),
-            duplicate,
-            duplicate,
-            _artifact_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                "gap3-artifact-a",
-                3,
-                "CANARY-ARTIFACT-A"
-            ),
-            _status_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                4,
-                TaskState.TASK_STATE_COMPLETED,
-                "CANARY-STATUS-A"
-            )
-        ]
-    )
-
-
-def _foreign_artifact() -> Scenario:
-    artifact = _artifact(
-        "gap3-artifact-b",
-        2,
-        "CANARY-FOREIGN-ARTIFACT-B",
-        TASK_B_ID,
-        CONTEXT_B_ID
-    )
-    return Scenario(
-        "EA-A1",
-        _SCENARIOS["EA-A1"][0],
-        _completed_response("CANARY-STATUS-A", artifacts = [artifact]),
-        [
-            _task_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                1,
-                TaskState.TASK_STATE_WORKING,
-                "CANARY-TASK-A"
-            ),
-            _artifact_event(
-                TASK_B_ID,
-                CONTEXT_B_ID,
-                "gap3-artifact-b",
-                2,
-                "CANARY-FOREIGN-ARTIFACT-B"
-            ),
-            _status_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                3,
-                TaskState.TASK_STATE_COMPLETED,
-                "CANARY-STATUS-A"
-            )
-        ]
-    )
-
-
-def _context_spliced_status() -> Scenario:
-    return Scenario(
-        "EA-A2",
-        _SCENARIOS["EA-A2"][0],
-        _completed_response(
-            "CANARY-CONTEXT-B",
-            message_task_id = TASK_A_ID,
-            message_context_id = CONTEXT_B_ID
-        ),
-        [
-            _task_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                1,
-                TaskState.TASK_STATE_WORKING,
-                "CANARY-TASK-A"
-            ),
-            _status_event(
-                TASK_A_ID,
-                CONTEXT_B_ID,
-                2,
-                TaskState.TASK_STATE_WORKING,
-                "CANARY-CONTEXT-B"
-            ),
-            _artifact_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                "gap3-artifact-a",
-                3,
-                "CANARY-ARTIFACT-A"
-            ),
-            _status_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                4,
                 TaskState.TASK_STATE_COMPLETED,
                 "CANARY-STATUS-A"
             )
@@ -616,207 +457,13 @@ def _forged_input_required() -> Scenario:
     )
 
 
-def _foreign_message() -> Scenario:
-    return Scenario(
-        "EA-A4",
-        _SCENARIOS["EA-A4"][0],
-        SendMessageResponse(
-            message = _message(
-                TASK_B_ID,
-                CONTEXT_B_ID,
-                2,
-                "CANARY-FOREIGN-MESSAGE-B"
-            )
-        ),
-        [
-            _task_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                1,
-                TaskState.TASK_STATE_WORKING,
-                "CANARY-TASK-A"
-            ),
-            _message_event(
-                TASK_B_ID,
-                CONTEXT_B_ID,
-                2,
-                "CANARY-FOREIGN-MESSAGE-B"
-            )
-        ]
-    )
-
-
-def _out_of_order() -> Scenario:
-    return Scenario(
-        "EA-A5",
-        _SCENARIOS["EA-A5"][0],
-        _completed_response("CANARY-STATUS-A"),
-        [
-            _artifact_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                "gap3-early-artifact-a",
-                1,
-                "CANARY-OUT-OF-ORDER-A"
-            ),
-            _task_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                2,
-                TaskState.TASK_STATE_COMPLETED,
-                "CANARY-STATUS-A"
-            )
-        ]
-    )
-
-
-def _post_terminal() -> Scenario:
-    post_terminal_artifact = _artifact(
-        "gap3-post-terminal-a",
-        2,
-        "CANARY-POST-TERMINAL-A",
-        TASK_A_ID,
-        CONTEXT_A_ID
-    )
-    return Scenario(
-        "EA-A6",
-        _SCENARIOS["EA-A6"][0],
-        _completed_response(
-            "CANARY-STATUS-A",
-            artifacts = [post_terminal_artifact]
-        ),
-        [
-            _task_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                1,
-                TaskState.TASK_STATE_COMPLETED,
-                "CANARY-STATUS-A"
-            ),
-            _artifact_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                "gap3-post-terminal-a",
-                2,
-                "CANARY-POST-TERMINAL-A"
-            )
-        ]
-    )
-
-
-def _artifact_equivocation() -> Scenario:
-    first = _artifact(
-        "gap3-shared-artifact",
-        2,
-        "CANARY-EQUIVOCATION-ONE",
-        TASK_A_ID,
-        CONTEXT_A_ID
-    )
-    second = _artifact(
-        "gap3-shared-artifact",
-        3,
-        "CANARY-EQUIVOCATION-TWO",
-        TASK_A_ID,
-        CONTEXT_A_ID
-    )
-    return Scenario(
-        "EA-A7",
-        _SCENARIOS["EA-A7"][0],
-        _completed_response(
-            "CANARY-STATUS-A",
-            artifacts = [first, second]
-        ),
-        [
-            _task_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                1,
-                TaskState.TASK_STATE_WORKING,
-                "CANARY-TASK-A"
-            ),
-            _artifact_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                "gap3-shared-artifact",
-                2,
-                "CANARY-EQUIVOCATION-ONE"
-            ),
-            _artifact_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                "gap3-shared-artifact",
-                3,
-                "CANARY-EQUIVOCATION-TWO"
-            ),
-            _status_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                4,
-                TaskState.TASK_STATE_COMPLETED,
-                "CANARY-STATUS-A"
-            )
-        ]
-    )
-
-
-def _cross_agent_aggregate() -> Scenario:
-    artifact = _artifact(
-        "gap3-budget-artifact-b",
-        2,
-        "CANARY-BUDGET-FOREIGN-B",
-        TASK_B_ID,
-        CONTEXT_B_ID
-    )
-    return Scenario(
-        "EA-A9",
-        _SCENARIOS["EA-A9"][0],
-        _completed_response("CANARY-STATUS-A", artifacts = [artifact]),
-        [
-            _task_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                1,
-                TaskState.TASK_STATE_WORKING,
-                "CANARY-FOOD-TASK-A"
-            ),
-            _artifact_event(
-                TASK_B_ID,
-                CONTEXT_B_ID,
-                "gap3-budget-artifact-b",
-                2,
-                "CANARY-BUDGET-FOREIGN-B"
-            ),
-            _status_event(
-                TASK_A_ID,
-                CONTEXT_A_ID,
-                3,
-                TaskState.TASK_STATE_COMPLETED,
-                "CANARY-FOOD-STATUS-A"
-            )
-        ]
-    )
-
-
-#keeps the fixture ids aligned with the gap 3 experiment matrix
+#these are the only fixtures needed by ea-a3 and the six follow-up experiments
 _SCENARIOS = {
     "EA-C0": ("Coherent Task A and Context A response.", _coherent),
-    "EA-C1": ("Coherent response with one byte-identical duplicate status.", _duplicate_status),
     "EA-C2": ("Coherent input-required control retaining Task A and Context A.", _coherent_input_required),
     "EA-TM1": ("Input-required transition splicing Task B into Context A.", _task_b_context_a_input_required),
     "EA-TM2": ("Input-required transition splicing Context B into Task A.", _task_a_context_b_input_required),
-    "EA-A1": ("Task A response containing a Task B artifact update.", _foreign_artifact),
-    "EA-A2": ("Task A status update carrying Context B.", _context_spliced_status),
-    "EA-A3": ("Late input-required status carrying Task B and Context B.", _forged_input_required),
-    "EA-A4": ("Task A response containing a Task B agent message.", _foreign_message),
-    "EA-A5": ("Artifact update emitted before the initial task.", _out_of_order),
-    "EA-A6": ("Artifact update emitted after Task A completed.", _post_terminal),
-    "EA-A7": ("One artifact ID reused with different content.", _artifact_equivocation),
-    "EA-A9": ("Food-task stream containing a budget-task artifact.", _cross_agent_aggregate)
-}
-
-_SCENARIO_BUILDERS = {
-    scenario_id: builder
-    for scenario_id, (_, builder) in _SCENARIOS.items()
+    "EA-A3": ("Late input-required status carrying Task B and Context B.", _forged_input_required)
 }
 
 

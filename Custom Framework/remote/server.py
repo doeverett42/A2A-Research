@@ -13,14 +13,23 @@ from common.audit import AuditMiddleware
 from remote.executor import RemoteAgentExecutor
 
 
-def build_remote_app(agent_card, executor: RemoteAgentExecutor, task_store: DatabaseTaskStore, database_engine: AsyncEngine) -> Starlette:
+def build_remote_app(
+    agent_card,
+    executor: RemoteAgentExecutor,
+    task_store: DatabaseTaskStore,
+    database_engine: AsyncEngine
+) -> Starlette:
     @asynccontextmanager
     async def lifespan(app: Starlette):
         await task_store.initialize()
+        await executor.initialize()
         try:
             yield
         finally:
-            await database_engine.dispose()
+            try:
+                await executor.close()
+            finally:
+                await database_engine.dispose()
 
     request_handler = DefaultRequestHandler(
         agent_executor = executor,

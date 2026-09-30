@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from common.logging import logger
+from cyber.cases import CaseContext, CyberCaseStore
 from host.agent import HostAgent
 from host.client import RemoteAgentClient, RemoteTaskResponse
 from host.discovery import AgentDiscovery
@@ -24,7 +25,15 @@ from host.router import DelegationPlan, MultiRemoteRouter, PlanStep
 
 
 class StepResult:
-    def __init__(self, step: PlanStep, response: str = "", error: str = "", task_id: str = "", context_id: str = "", input_required: bool = False) -> None:
+    def __init__(
+        self,
+        step: PlanStep,
+        response: str = "",
+        error: str = "",
+        task_id: str = "",
+        context_id: str = "",
+        input_required: bool = False
+    ) -> None:
         self.step = step
         self.response = response
         self.error = error
@@ -34,7 +43,13 @@ class StepResult:
 
 
 class OrchestrationResult:
-    def __init__(self, plan: DelegationPlan, step_results: list[StepResult], response: str, input_required: bool) -> None:
+    def __init__(
+        self,
+        plan: DelegationPlan,
+        step_results: list[StepResult],
+        response: str,
+        input_required: bool
+    ) -> None:
         self.plan = plan
         self.step_results = step_results
         self.response = response
@@ -42,11 +57,64 @@ class OrchestrationResult:
 
 
 class PendingOrchestration:
-    def __init__(self, user_message: str, plan: DelegationPlan, step_results: list[StepResult], step_index: int) -> None:
+    def __init__(
+        self,
+        user_message: str,
+        plan: DelegationPlan,
+        step_results: list[StepResult],
+        step_index: int,
+        case_context: CaseContext | None = None
+    ) -> None:
         self.user_message = user_message
         self.plan = plan
         self.step_results = step_results
         self.step_index = step_index
+        self.case_context = case_context
+
+
+class TupleBinding:
+    def __init__(
+        self,
+        run_index: int,
+        stage: str,
+        step: PlanStep,
+        task_id: str,
+        context_id: str,
+        state: int,
+        case_context: CaseContext | None
+    ) -> None:
+        self.run_index = run_index
+        self.stage = stage
+        self.step_id = step.step_id
+        self.agent_name = step.agent_name
+        self.remote_url = step.remote_url
+        self.task_id = task_id
+        self.context_id = context_id
+        self.state = int(state)
+        self.case_label = (
+            case_context.packet.case_label
+            if case_context is not None
+            else ""
+        )
+        self.packet_hash = (
+            case_context.packet.packet_hash
+            if case_context is not None
+            else ""
+        )
+
+    def as_dict(self) -> dict:
+        return {
+            "run_index": self.run_index,
+            "stage": self.stage,
+            "step_id": self.step_id,
+            "agent_name": self.agent_name,
+            "remote_url": self.remote_url,
+            "task_id": self.task_id,
+            "context_id": self.context_id,
+            "state": self.state,
+            "case_label": self.case_label,
+            "packet_hash": self.packet_hash
+        }
 
 
 class HostOrchestrator:
@@ -56,15 +124,19 @@ class HostOrchestrator:
         discovery: AgentDiscovery,
         router: MultiRemoteRouter,
         timeout_seconds: int,
-        client_factory: Callable[[str, int], RemoteAgentClient] | None = None
+        client_factory: Callable[[str, int], RemoteAgentClient] | None = None,
+        case_store: CyberCaseStore | None = None
     ) -> None:
         self.agent = agent
         self.discovery = discovery
         self.router = router
         self.timeout_seconds = timeout_seconds
         self.client_factory = client_factory
+        self.case_store = case_store
         self.remote_clients = {}
         self.pending = None
+        self.tuple_bindings = []
+        self._run_index = 0
 
     async def run(self, user_message: str) -> OrchestrationResult:
         #a second call while pending is continuation text for the waiting step,
@@ -72,17 +144,41 @@ class HostOrchestrator:
         if self.pending:
             return await self._continue_pending(user_message)
 
+        self._run_index += 1
+        case_context = (
+            self.case_store.resolve(user_message)
+            if self.case_store is not None
+            else None
+        )
+        planning_message = (
+            self.case_store.planning_message(user_message, case_context)
+            if self.case_store is not None and case_context is not None
+            else user_message
+        )
         agents = await self.discovery.discover()
-        plan = await self.router.plan(user_message, agents, self.agent)
+        plan = await self.router.plan(planning_message, agents, self.agent)
         _log_plan(plan)
 
         if not plan.steps:
             response = await self.agent.respond_directly(user_message)
             return OrchestrationResult(plan, [], response, False)
 
-        return await self._execute_plan(user_message, plan, [], 0)
+        return await self._execute_plan(
+            user_message,
+            plan,
+            [],
+            0,
+            case_context
+        )
 
-    async def _execute_plan(self, user_message: str, plan: DelegationPlan, step_results: list[StepResult], start_index: int) -> OrchestrationResult:
+    async def _execute_plan(
+        self,
+        user_message: str,
+        plan: DelegationPlan,
+        step_results: list[StepResult],
+        start_index: int,
+        case_context: CaseContext | None = None
+    ) -> OrchestrationResult:
         results_by_id = {result.step.step_id: result for result in step_results}
 
         for step_index in range(start_index, len(plan.steps)):
@@ -98,7 +194,12 @@ class HostOrchestrator:
                 result = StepResult(step, error = error)
                 logger.warning("Skipping plan step %s for %s. %s", step.step_id, step.agent_name, error)
             else:
-                result = await self._execute_step(user_message, step, dependencies)
+                result = await self._execute_step(
+                    user_message,
+                    step,
+                    dependencies,
+                    case_context
+                )
 
             step_results.append(result)
             results_by_id[step.step_id] = result
@@ -110,7 +211,8 @@ class HostOrchestrator:
                     user_message = user_message,
                     plan = plan,
                     step_results = step_results,
-                    step_index = step_index
+                    step_index = step_index,
+                    case_context = case_context
                 )
                 return OrchestrationResult(plan, step_results, result.response, True)
 
@@ -149,6 +251,12 @@ class HostOrchestrator:
             task_id = waiting_result.task_id,
             context_id = waiting_result.context_id
         )
+        self._record_tuple_binding(
+            waiting_result.step,
+            remote_response,
+            pending.case_context,
+            "continuation"
+        )
         result = _step_result(waiting_result.step, remote_response)
         pending.step_results[-1] = result
 
@@ -167,23 +275,42 @@ class HostOrchestrator:
             pending.user_message,
             pending.plan,
             pending.step_results,
-            pending.step_index + 1
+            pending.step_index + 1,
+            pending.case_context
         )
 
     async def close(self) -> None:
         for client in self.remote_clients.values():
             await client.close()
         self.remote_clients = {}
+        close_agent = getattr(self.agent, "close", None)
+        if close_agent is not None:
+            await close_agent()
 
-    async def _execute_step(self, user_message: str, step: PlanStep, dependencies: list[StepResult]) -> StepResult:
+    async def _execute_step(
+        self,
+        user_message: str,
+        step: PlanStep,
+        dependencies: list[StepResult],
+        case_context: CaseContext | None = None
+    ) -> StepResult:
         #only declared dependency responses are formatted into the new request.
         #the do cases change this list to test direct and indirect contamination.
         dependency_results = [
             f"Step {result.step.step_id} from {result.step.agent_name}:\n{result.response}"
             for result in dependencies
         ]
+        delegated_user_message = (
+            self.case_store.delegation_message(
+                user_message,
+                case_context,
+                step.agent_name
+            )
+            if self.case_store is not None and case_context is not None
+            else user_message
+        )
         delegated_request = await self.agent.prepare_delegation(
-            user_message,
+            delegated_user_message,
             agent_name = step.agent_name,
             assigned_task = step.task,
             dependency_results = dependency_results
@@ -199,6 +326,12 @@ class HostOrchestrator:
         try:
             client = self._client_for(step.remote_url)
             remote_response = await client.send_text(delegated_request)
+            self._record_tuple_binding(
+                step,
+                remote_response,
+                case_context,
+                "initial"
+            )
             logger.info("Completed plan step %s with %s.", step.step_id, step.agent_name)
             return _step_result(step, remote_response)
         except Exception as e:
@@ -213,6 +346,25 @@ class HostOrchestrator:
                 client = self.client_factory(remote_url, self.timeout_seconds)
             self.remote_clients[remote_url] = client
         return self.remote_clients[remote_url]
+
+    def _record_tuple_binding(
+        self,
+        step: PlanStep,
+        response: RemoteTaskResponse,
+        case_context: CaseContext | None,
+        stage: str
+    ) -> None:
+        self.tuple_bindings.append(
+            TupleBinding(
+                self._run_index,
+                stage,
+                step,
+                response.task_id,
+                response.context_id,
+                response.state,
+                case_context
+            )
+        )
 
 
 def _step_result(step: PlanStep, response: RemoteTaskResponse) -> StepResult:

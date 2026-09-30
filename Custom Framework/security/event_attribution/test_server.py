@@ -3,7 +3,6 @@ from __future__ import annotations
 import unittest
 
 import httpx
-from google.protobuf.json_format import MessageToDict
 
 from a2a.client import ClientCallContext, ClientConfig, create_client
 from a2a.helpers import new_text_message
@@ -51,26 +50,6 @@ class MaliciousEventServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(TASK_A_ID, events[2].status_update.task_id)
         self.assertEqual(CONTEXT_A_ID, events[2].status_update.context_id)
 
-    async def test_foreign_artifact_is_schema_valid(self) -> None:
-        events = await self._stream_events("EA-A1")
-        update = events[1].artifact_update
-
-        self.assertEqual(TASK_B_ID, update.task_id)
-        self.assertEqual(CONTEXT_B_ID, update.context_id)
-        self.assertIn(
-            "CANARY-FOREIGN-ARTIFACT-B",
-            update.artifact.parts[0].text
-        )
-
-    async def test_context_splice_survives_normal_sdk_parsing(self) -> None:
-        events = await self._normal_events("EA-A2")
-        task = events[0].task
-
-        self.assertEqual(TASK_A_ID, task.id)
-        self.assertEqual(CONTEXT_A_ID, task.context_id)
-        self.assertEqual(TASK_A_ID, task.status.message.task_id)
-        self.assertEqual(CONTEXT_B_ID, task.status.message.context_id)
-
     async def test_every_scenario_parses_on_both_delivery_paths(self) -> None:
         for scenario_id in scenario_catalog():
             with self.subTest(scenario = scenario_id, delivery = "normal"):
@@ -84,15 +63,19 @@ class MaliciousEventServerTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIn("sequenceNumber", _event_metadata(event))
                     self.assertIn("CANARY-", _event_text(event))
 
-    async def test_duplicate_status_is_byte_identical(self) -> None:
-        events = await self._stream_events("EA-C1")
-
+    async def test_ea_a3_continuation_completes_forged_task(self) -> None:
+        #the initial stream changes a/a to b/b before the follow-up uses b/b.
+        initial_events = await self._stream_events("EA-A3")
+        self.assertEqual(TASK_A_ID, initial_events[0].task.id)
+        self.assertEqual(CONTEXT_A_ID, initial_events[0].task.context_id)
+        initial_update = initial_events[-1].status_update
+        self.assertEqual(TASK_B_ID, initial_update.task_id)
+        self.assertEqual(CONTEXT_B_ID, initial_update.context_id)
         self.assertEqual(
-            MessageToDict(events[1]),
-            MessageToDict(events[2])
+            TaskState.TASK_STATE_INPUT_REQUIRED,
+            initial_update.status.state
         )
 
-    async def test_ea_a3_continuation_completes_forged_task(self) -> None:
         events = await self._official_client_events(
             "EA-A3",
             streaming = True,
@@ -143,6 +126,8 @@ class MaliciousEventServerTests(unittest.IsolatedAsyncioTestCase):
         for scenario_id, task_id, context_id, completion_canary in cases:
             with self.subTest(scenario = scenario_id, phase = "initial"):
                 initial_events = await self._stream_events(scenario_id)
+                self.assertEqual(TASK_A_ID, initial_events[0].task.id)
+                self.assertEqual(CONTEXT_A_ID, initial_events[0].task.context_id)
                 update = initial_events[-1].status_update
                 self.assertEqual(task_id, update.task_id)
                 self.assertEqual(context_id, update.context_id)
@@ -181,10 +166,33 @@ class MaliciousEventServerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn(run_canary, _event_text(events[-1]))
 
+        #a new request must not inherit the previous run's unique marker.
+        next_events = await self._stream_events("EA-TM1")
+        for event in next_events:
+            self.assertNotIn(run_canary, _event_text(event))
+
+    async def test_continuation_requires_the_selected_tuple(self) -> None:
+        #the fixture should only complete the exact tuple it advertised.
+        events = await self._official_client_events(
+            "EA-A3",
+            streaming = True,
+            text = HOST_CONTINUATION_CANARY,
+            task_id = TASK_B_ID,
+            context_id = CONTEXT_A_ID
+        )
+
+        self.assertEqual(2, len(events))
+        self.assertEqual(TASK_A_ID, events[0].task.id)
+        self.assertEqual(
+            TaskState.TASK_STATE_INPUT_REQUIRED,
+            events[-1].status_update.status.state
+        )
+        self.assertNotIn(EA_A3_COMPLETION_CANARY, _event_text(events[-1]))
+
     async def test_scenario_catalog_reports_configured_default_and_tasks(self) -> None:
         app = build_malicious_app(
             self.base_url,
-            default_scenario_id = "EA-A1"
+            default_scenario_id = "EA-A3"
         )
         transport = httpx.ASGITransport(app = app)
         async with httpx.AsyncClient(
@@ -194,7 +202,11 @@ class MaliciousEventServerTests(unittest.IsolatedAsyncioTestCase):
             response = await httpx_client.get("/scenarios")
 
         body = response.json()
-        self.assertEqual("EA-A1", body["defaultScenario"])
+        self.assertEqual("EA-A3", body["defaultScenario"])
+        self.assertEqual(
+            {"EA-C0", "EA-C2", "EA-TM1", "EA-TM2", "EA-A3"},
+            set(body["scenarios"])
+        )
         self.assertEqual(TASK_A_ID, body["tasks"][0]["taskId"])
         self.assertEqual(CONTEXT_A_ID, body["tasks"][0]["contextId"])
         self.assertEqual(TASK_B_ID, body["tasks"][1]["taskId"])
@@ -304,7 +316,7 @@ class MaliciousEventServerTests(unittest.IsolatedAsyncioTestCase):
 
 
 def _event_type(event) -> str:
-    for event_type in ("task", "status_update", "artifact_update", "message"):
+    for event_type in ("task", "status_update", "artifact_update"):
         if event.HasField(event_type):
             return event_type
     return "unknown"
@@ -315,9 +327,7 @@ def _event_metadata(event):
         return event.task.metadata
     if event.HasField("status_update"):
         return event.status_update.metadata
-    if event.HasField("artifact_update"):
-        return event.artifact_update.metadata
-    return event.message.metadata
+    return event.artifact_update.metadata
 
 
 def _event_text(event) -> str:
@@ -325,9 +335,7 @@ def _event_text(event) -> str:
         return event.task.status.message.parts[0].text
     if event.HasField("status_update"):
         return event.status_update.status.message.parts[0].text
-    if event.HasField("artifact_update"):
-        return event.artifact_update.artifact.parts[0].text
-    return event.message.parts[0].text
+    return event.artifact_update.artifact.parts[0].text
 
 
 if __name__ == "__main__":

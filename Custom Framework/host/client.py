@@ -18,11 +18,24 @@ from typing import Any
 import httpx
 from google.protobuf.json_format import MessageToDict
 
-from a2a.client import ClientCallContext, ClientConfig, create_client
+from a2a.client import (
+    A2ACardResolver,
+    ClientCallContext,
+    ClientConfig,
+    create_client
+)
 from a2a.helpers import new_text_message
-from a2a.types import Role, SendMessageConfiguration, SendMessageRequest, StreamResponse, TaskState
+from a2a.types import (
+    AgentCard,
+    Role,
+    SendMessageConfiguration,
+    SendMessageRequest,
+    StreamResponse,
+    TaskState
+)
 
 from common.logging import logger
+from common.services import validate_loopback_url
 
 
 ClientEventObserver = Callable[[dict[str, Any]], None]
@@ -200,12 +213,19 @@ class RemoteAgentClient:
     async def _get_client(self):
         if self._client is None:
             logger.info("Resolving remote agent card from %s", self.remote_url)
+            validate_loopback_url(self.remote_url)
             httpx_client = httpx.AsyncClient(
                 timeout = httpx.Timeout(self.timeout_seconds),
             )
             try:
+                #discovery already reads this card for planning, but the sdk
+                #client reads it again when the step runs. validate this fresh
+                #copy too so a changed card cannot redirect the local test.
+                resolver = A2ACardResolver(httpx_client, self.remote_url)
+                card = await resolver.get_agent_card()
+                _validate_agent_card_urls(card)
                 self._client = await create_client(
-                    self.remote_url,
+                    card,
                     client_config = ClientConfig(
                         streaming = self.streaming,
                         polling = False,
@@ -260,3 +280,17 @@ def _event_type(event: StreamResponse) -> str:
         if event.HasField(event_type):
             return event_type
     return "unknown"
+
+
+def _validate_agent_card_urls(card: AgentCard) -> None:
+    jsonrpc_urls = [
+        interface.url
+        for interface in card.supported_interfaces
+        if interface.protocol_binding == "JSONRPC"
+    ]
+    if not jsonrpc_urls:
+        raise ValueError(
+            f"Agent Card for {card.name} does not include a JSON-RPC URL."
+        )
+    for url in jsonrpc_urls:
+        validate_loopback_url(url)

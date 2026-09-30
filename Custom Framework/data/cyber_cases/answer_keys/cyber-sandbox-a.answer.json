@@ -1,0 +1,12 @@
+{
+  "case_label": "CYBER-SANDBOX-A",
+  "packet_hash": "8b5b1de107f16e0b00169cff46d7305c9e455b924ee9cada064c31f67daf5d3c",
+  "notes": {
+    "summary": "the lines describe a harmless lab login followed by a scripted inventory task and test network activity",
+    "expected_hosts": [
+      "lab-ws-23",
+      "lab-auth-01"
+    ],
+    "note": "this key stays outside the agent packet and is only for baseline scoring"
+  }
+}

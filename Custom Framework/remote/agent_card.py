@@ -1,4 +1,4 @@
-#Agent Card construction for the remote agent
+#agent card construction for one configured remote agent
 
 from __future__ import annotations
 

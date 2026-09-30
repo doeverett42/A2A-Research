@@ -1,4 +1,4 @@
-#Global configuration loader
+#global configuration loader
 
 from __future__ import annotations
 
@@ -41,19 +41,10 @@ class Config:
     HOST_MODEL: str = os.environ["HOST_MODEL"]
     A2A_CLIENT_TIMEOUT_SECONDS: int = _env_int("A2A_CLIENT_TIMEOUT_SECONDS")
     
-    REMOTE_AGENT_NAMES: str = os.environ["REMOTE_AGENT_NAMES"]
-    REMOTE_AGENT_MODELS: str = os.environ["REMOTE_AGENT_MODELS"]
-    REMOTE_AGENT_PORTS: str = os.environ["REMOTE_AGENT_PORTS"]
-    REMOTE_AGENT_CARD_DESCRIPTIONS: str = os.environ["REMOTE_AGENT_CARD_DESCRIPTIONS"]
-    REMOTE_AGENT_SKILL_IDS: str = os.environ["REMOTE_AGENT_SKILL_IDS"]
-    REMOTE_AGENT_SKILL_NAMES: str = os.environ["REMOTE_AGENT_SKILL_NAMES"]
-    REMOTE_AGENT_SKILL_DESCRIPTIONS: str = os.environ["REMOTE_AGENT_SKILL_DESCRIPTIONS"]
-    REMOTE_AGENT_SKILL_TAGS: str = os.environ["REMOTE_AGENT_SKILL_TAGS"]
-    REMOTE_AGENT_SKILL_EXAMPLES: str = os.environ["REMOTE_AGENT_SKILL_EXAMPLES"]
-    REMOTE_AGENT_SYSTEM_PROMPTS: str = os.environ["REMOTE_AGENT_SYSTEM_PROMPTS"]
     REMOTE_HOST: str = os.environ["REMOTE_HOST"]
     REMOTE_AGENT_VERSION: str = os.environ["REMOTE_AGENT_VERSION"]
     TASK_DATABASE_DIRECTORY: str = os.environ["TASK_DATABASE_DIRECTORY"]
+    CYBER_CASE_DIRECTORY: str = os.environ["CYBER_CASE_DIRECTORY"]
 
     @property
     def remote_agent_ports(self) -> list[int]:
@@ -97,9 +88,9 @@ class Config:
 
     @property
     def remote_agent_base_urls(self) -> list[str]:
-        return [f"http://{self.REMOTE_HOST}:{port}" for port in self.remote_agent_ports]
+        return [self.remote_base_url(port) for port in self.remote_agent_ports]
 
-    #import each agents as a list of dictionaries from env for modularity
+    #loads each agent as one dictionary so the five services share one format
     @property
     def remote_agent_specs(self) -> list[dict[str, Any]]:
         names = self.remote_agent_names
@@ -176,11 +167,18 @@ class Config:
         return self.remote_agent_specs[agent_index]
 
     def remote_base_url(self, port: int) -> str:
-        return f"http://{self.REMOTE_HOST}:{port}"
+        host = self.REMOTE_HOST
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        return f"http://{host}:{port}"
 
     def remote_task_database_path(self, agent_index: int) -> Path:
         database_directory = Path(self.TASK_DATABASE_DIRECTORY).resolve()
         return database_directory / f"remote_agent_{agent_index}.db"
+
+    @property
+    def cyber_case_directory_path(self) -> Path:
+        return Path(self.CYBER_CASE_DIRECTORY).resolve()
 
     @property
     def remote_agent_card_urls(self) -> list[str]:

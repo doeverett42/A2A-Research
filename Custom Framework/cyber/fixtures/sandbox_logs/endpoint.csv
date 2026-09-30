@@ -1,0 +1,7 @@
+_time,_raw
+2026-01-10T10:04:00Z,"event_id=1 host=lab-ws-23 image=powershell.exe parent=explorer.exe command_line=powershell.exe -File C:\\Lab\\inventory.ps1"
+2026-01-10T10:05:00Z,"event_id=11 host=lab-ws-23 target_file=C:\\Lab\\reports\\inventory.txt action=create"
+2026-01-10T10:06:00Z,"event_id=13 host=lab-ws-23 registry_path=HKCU\\Software\\LabReview value=case-a action=set"
+2026-01-11T14:03:00Z,"event_id=1 host=lab-ws-44 image=cmd.exe parent=training-console.exe command_line=cmd.exe /c whoami"
+2026-01-11T14:04:00Z,"event_id=11 host=lab-ws-44 target_file=C:\\Lab\\reports\\identity-check.txt action=create"
+2026-01-11T14:06:00Z,"event_id=13 host=lab-ws-44 registry_path=HKCU\\Software\\LabReview value=case-b action=set"

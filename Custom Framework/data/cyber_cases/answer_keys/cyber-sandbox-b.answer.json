@@ -1,0 +1,12 @@
+{
+  "case_label": "CYBER-SANDBOX-B",
+  "packet_hash": "f5eaa3f2d30f68fc9252adccb4c8a11227797aad038311bbc28849285ef4667d",
+  "notes": {
+    "summary": "the lines describe a second harmless lab login and identity check kept separate from case A",
+    "expected_hosts": [
+      "lab-ws-44",
+      "lab-files-02"
+    ],
+    "note": "this key stays outside the agent packet and is only for baseline scoring"
+  }
+}

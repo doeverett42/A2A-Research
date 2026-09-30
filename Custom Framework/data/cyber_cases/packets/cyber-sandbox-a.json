@@ -1,0 +1,113 @@
+{
+  "case_label": "CYBER-SANDBOX-A",
+  "title": "Harmless lab workstation review A",
+  "dataset": "local synthetic development fixture",
+  "time_window": {
+    "start": "2026-01-10T10:00:00Z",
+    "end": "2026-01-10T10:10:00Z"
+  },
+  "selection_rule": "keep up to six events per evidence group inside the fixed time window and sort them by timestamp source and text",
+  "evidence_groups": {
+    "identity": [
+      {
+        "evidence_id": "AUTH-001",
+        "timestamp": "2026-01-10T10:00:00Z",
+        "source": "WinEventLog:Security",
+        "event": "event_id=4625 user=student-a source_host=lab-ws-23 destination_host=lab-auth-01 result=failure"
+      },
+      {
+        "evidence_id": "AUTH-002",
+        "timestamp": "2026-01-10T10:01:00Z",
+        "source": "WinEventLog:Security",
+        "event": "event_id=4625 user=student-a source_host=lab-ws-23 destination_host=lab-auth-01 result=failure"
+      },
+      {
+        "evidence_id": "AUTH-003",
+        "timestamp": "2026-01-10T10:03:00Z",
+        "source": "WinEventLog:Security",
+        "event": "event_id=4624 user=student-a source_host=lab-ws-23 destination_host=lab-auth-01 result=success logon_type=3"
+      }
+    ],
+    "endpoint": [
+      {
+        "evidence_id": "ENDPOINT-001",
+        "timestamp": "2026-01-10T10:04:00Z",
+        "source": "Sysmon",
+        "event": "event_id=1 host=lab-ws-23 image=powershell.exe parent=explorer.exe command_line=powershell.exe -File C:\\\\Lab\\\\inventory.ps1"
+      },
+      {
+        "evidence_id": "ENDPOINT-002",
+        "timestamp": "2026-01-10T10:05:00Z",
+        "source": "Sysmon",
+        "event": "event_id=11 host=lab-ws-23 target_file=C:\\\\Lab\\\\reports\\\\inventory.txt action=create"
+      },
+      {
+        "evidence_id": "ENDPOINT-003",
+        "timestamp": "2026-01-10T10:06:00Z",
+        "source": "Sysmon",
+        "event": "event_id=13 host=lab-ws-23 registry_path=HKCU\\\\Software\\\\LabReview value=case-a action=set"
+      }
+    ],
+    "network": [
+      {
+        "evidence_id": "NET-001",
+        "timestamp": "2026-01-10T10:04:30Z",
+        "source": "fgt_traffic",
+        "event": "action=allow source_ip=192.0.2.23 destination_ip=192.0.2.10 destination_port=445 protocol=tcp bytes_out=640"
+      },
+      {
+        "evidence_id": "NET-002",
+        "timestamp": "2026-01-10T10:05:30Z",
+        "source": "fgt_traffic",
+        "event": "action=allow source_ip=192.0.2.23 destination_ip=198.51.100.20 destination_port=443 protocol=tcp bytes_out=1200"
+      },
+      {
+        "evidence_id": "NET-003",
+        "timestamp": "2026-01-10T10:07:00Z",
+        "source": "fgt_traffic",
+        "event": "action=deny source_ip=192.0.2.23 destination_ip=198.51.100.30 destination_port=8443 protocol=tcp"
+      }
+    ],
+    "web_dns": [
+      {
+        "evidence_id": "DNS-001",
+        "timestamp": "2026-01-10T10:05:00Z",
+        "source": "stream:dns",
+        "event": "source_ip=192.0.2.23 query=alpha-lab.invalid record_type=A answer=198.51.100.20"
+      },
+      {
+        "evidence_id": "WEB-001",
+        "timestamp": "2026-01-10T10:05:45Z",
+        "source": "stream:http",
+        "event": "source_ip=192.0.2.23 destination=alpha-lab.invalid method=GET path=/training/report status=200 user_agent=LabBrowser"
+      },
+      {
+        "evidence_id": "DNS-002",
+        "timestamp": "2026-01-10T10:06:30Z",
+        "source": "stream:dns",
+        "event": "source_ip=192.0.2.23 query=unused-alpha.invalid record_type=A result=NXDOMAIN"
+      },
+      {
+        "evidence_id": "WEB-002",
+        "timestamp": "2026-01-10T10:06:45Z",
+        "source": "stream:http",
+        "event": "source_ip=192.0.2.23 destination=alpha-lab.invalid method=GET path=/missing status=404 user_agent=LabBrowser"
+      }
+    ],
+    "alerts": [
+      {
+        "evidence_id": "ALERT-001",
+        "timestamp": "2026-01-10T10:01:30Z",
+        "source": "suricata",
+        "event": "alert=LAB-REPEATED-AUTH source_ip=192.0.2.23 destination=lab-auth-01 severity=low note=harmless_training_signal"
+      },
+      {
+        "evidence_id": "ALERT-002",
+        "timestamp": "2026-01-10T10:07:30Z",
+        "source": "suricata",
+        "event": "alert=LAB-UNUSUAL-PORT source_ip=192.0.2.23 destination_ip=198.51.100.30 severity=low note=harmless_training_signal"
+      }
+    ]
+  },
+  "packet_hash": "8b5b1de107f16e0b00169cff46d7305c9e455b924ee9cada064c31f67daf5d3c"
+}

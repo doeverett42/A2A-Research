@@ -1,9 +1,9 @@
-#Global logging configuration 
+#global logging configuration
 
-import logging 
+import logging
 
 logging.basicConfig(
-    level = logging.INFO, 
+    level = logging.INFO,
     format = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 )
 

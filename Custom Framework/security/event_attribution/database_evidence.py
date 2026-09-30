@@ -16,6 +16,15 @@ from pathlib import Path
 
 
 SEARCH_COLUMNS = ("status", "history", "artifacts")
+ROOT_DIRECTORY = Path(__file__).resolve().parents[2]
+
+
+def database_path_text(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return str(resolved.relative_to(ROOT_DIRECTORY))
+    except ValueError:
+        return str(resolved)
 
 
 def snapshot_task_ids(
@@ -40,7 +49,7 @@ def database_evidence(
         new_ids = sorted(current_ids - baseline.get(agent_name, set()))
         rows = _task_rows(path, new_ids)
         agents[agent_name] = {
-            "database_path": str(path.resolve()),
+            "database_path": database_path_text(path),
             "database_exists": path.exists(),
             "baseline_task_count": len(baseline.get(agent_name, set())),
             "current_task_count": len(current_ids),
@@ -48,7 +57,12 @@ def database_evidence(
             "new_rows": [
                 _row_evidence(row, run_canary)
                 for row in rows
-            ]
+            ],
+            "case_evidence_rows": _case_evidence_rows(
+                path,
+                new_ids,
+                run_canary
+            )
         }
 
     return {
@@ -63,7 +77,7 @@ def snapshot_report(
 ) -> dict:
     return {
         agent_name: {
-            "database_path": str(path.resolve()),
+            "database_path": database_path_text(path),
             "database_exists": path.exists(),
             "task_ids": sorted(snapshot.get(agent_name, set()))
         }
@@ -114,8 +128,8 @@ def _row_evidence(row: sqlite3.Row, run_canary: str) -> dict:
     #report the exact columns rather than only returning one yes/no value.
     run_canary_columns = [
         column
-        for column, text in raw_columns.items()
-        if run_canary in text
+        for column, column_canaries in canaries_by_column.items()
+        if run_canary and run_canary in column_canaries
     ]
     return {
         "task_id": row["id"],
@@ -138,6 +152,62 @@ def _read_only_connection(path: Path) -> sqlite3.Connection:
     )
 
 
+def _case_evidence_rows(
+    path: Path,
+    task_ids: list[str],
+    run_canary: str
+) -> list[dict]:
+    if not path.exists() or not task_ids:
+        return []
+
+    placeholders = ", ".join("?" for _ in task_ids)
+    connection = _read_only_connection(path)
+    connection.row_factory = sqlite3.Row
+    try:
+        table_exists = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'case_evidence'"
+        ).fetchone()
+        if not table_exists:
+            return []
+        rows = connection.execute(
+            "SELECT recorded_at, stage, agent_name, message_id, task_id, "
+            "context_id, case_label, packet_hash, evidence_group, "
+            "request_canaries, response_canaries FROM case_evidence "
+            f"WHERE task_id IN ({placeholders}) ORDER BY id",
+            task_ids
+        ).fetchall()
+    finally:
+        connection.close()
+
+    evidence = []
+    for row in rows:
+        request_canaries = _json_value(row["request_canaries"])
+        response_canaries = _json_value(row["response_canaries"])
+        columns = []
+        if _contains_canary(request_canaries, run_canary):
+            columns.append("request_canaries")
+        if _contains_canary(response_canaries, run_canary):
+            columns.append("response_canaries")
+        evidence.append(
+            {
+                "recorded_at": row["recorded_at"],
+                "stage": row["stage"],
+                "agent_name": row["agent_name"],
+                "message_id": row["message_id"],
+                "task_id": row["task_id"],
+                "context_id": row["context_id"],
+                "case_label": row["case_label"],
+                "packet_hash": row["packet_hash"],
+                "evidence_group": row["evidence_group"],
+                "contains_run_canary": bool(columns),
+                "run_canary_columns": columns,
+                "request_canaries": request_canaries,
+                "response_canaries": response_canaries
+            }
+        )
+    return evidence
+
+
 def _json_value(value: str):
     try:
         return json.loads(value)
@@ -147,3 +217,11 @@ def _json_value(value: str):
 
 def _canaries(text: str) -> list[str]:
     return sorted(set(re.findall(r"CANARY-[A-Z0-9-]+", text)))
+
+
+def _contains_canary(value, run_canary: str) -> bool:
+    if not run_canary:
+        return False
+    if isinstance(value, list):
+        return run_canary in value
+    return run_canary in _canaries(str(value))

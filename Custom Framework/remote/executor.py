@@ -8,12 +8,29 @@ from a2a.types import Role, TaskState
 
 from common.audit import record_audit_event
 from common.logging import logger
+from cyber.cases import CaseMetadata, extract_case_metadata
 from remote.agent import RemoteAgentProtocol
+from remote.case_evidence import CaseEvidenceStore
+
 
 #thin a2a protocol bridge around a remote agent
 class RemoteAgentExecutor(AgentExecutor):
-    def __init__(self, agent: RemoteAgentProtocol) -> None:
+    def __init__(
+        self,
+        agent: RemoteAgentProtocol,
+        case_evidence_store: CaseEvidenceStore | None = None
+    ) -> None:
         self.agent = agent
+        self.case_evidence_store = case_evidence_store
+
+    async def initialize(self) -> None:
+        if self.case_evidence_store is not None:
+            await self.case_evidence_store.initialize()
+
+    async def close(self) -> None:
+        close_agent = getattr(self.agent, "close", None)
+        if close_agent is not None:
+            await close_agent()
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         message_id = context.message.message_id if context.message else ""
@@ -40,21 +57,32 @@ class RemoteAgentExecutor(AgentExecutor):
         updater = TaskUpdater(
             event_queue = event_queue,
             task_id = task.id,
-            context_id  = task.context_id
-        )
-        query = _task_input(context)
-
-        await updater.update_status(
-            state = TaskState.TASK_STATE_WORKING,
-            message = new_text_message(
-                "Remote agent is processing the request.",
-                media_type = "text/plain",
-                context_id = task.context_id,
-                task_id = task.id
-            )
+            context_id = task.context_id
         )
 
         try:
+            #parse and validate local case metadata inside the same failure path
+            #as the model call so malformed input still produces a failed task.
+            query = _task_input(context)
+            case = extract_case_metadata(query)
+            await self._record_case(
+                "request_received",
+                case,
+                message_id,
+                task.id,
+                task.context_id,
+                query
+            )
+
+            await updater.update_status(
+                state = TaskState.TASK_STATE_WORKING,
+                message = new_text_message(
+                    "Remote agent is processing the request.",
+                    media_type = "text/plain",
+                    context_id = task.context_id,
+                    task_id = task.id
+                )
+            )
             record_audit_event(
                 "agent_call_started",
                 query_length = len(query)
@@ -74,11 +102,25 @@ class RemoteAgentExecutor(AgentExecutor):
                         task_id = task.id
                     )
                 )
+                await self._record_case(
+                    "input_required",
+                    case,
+                    message_id,
+                    task.id,
+                    task.context_id,
+                    query,
+                    result.message
+                )
                 record_audit_event("executor_input_required")
                 return
 
             await updater.add_artifact(
-                parts = [new_text_part(result.message, media_type="text/plain")],
+                parts = [
+                    new_text_part(
+                        result.message,
+                        media_type = "text/plain"
+                    )
+                ],
                 name = "response",
                 last_chunk = True
             )
@@ -90,6 +132,15 @@ class RemoteAgentExecutor(AgentExecutor):
                     context_id = task.context_id,
                     task_id = task.id
                 )
+            )
+            await self._record_case(
+                "completed",
+                case,
+                message_id,
+                task.id,
+                task.context_id,
+                query,
+                result.message
             )
             record_audit_event("executor_completed")
         except Exception as e:
@@ -107,7 +158,38 @@ class RemoteAgentExecutor(AgentExecutor):
                 )
             )
 
-    async def cancel(self, context: RequestContext, event_queue: EventQueue, ) -> None:
+    async def _record_case(
+        self,
+        stage: str,
+        case: CaseMetadata | None,
+        message_id: str,
+        task_id: str,
+        context_id: str,
+        request_text: str,
+        response_text: str = ""
+    ) -> None:
+        if case is None or self.case_evidence_store is None:
+            return
+        try:
+            await self.case_evidence_store.record(
+                stage,
+                case,
+                message_id,
+                task_id,
+                context_id,
+                request_text,
+                response_text
+            )
+        except Exception:
+            #case evidence should be visible as a logging failure, but it should
+            #not replace the actual a2a response the experiment is measuring.
+            logger.exception("Could not record local case evidence.")
+
+    async def cancel(
+        self,
+        context: RequestContext,
+        event_queue: EventQueue
+    ) -> None:
         if context.task_id is None or context.context_id is None:
             raise ValueError("Cannot cancel a request without task/context IDs.")
 
@@ -122,7 +204,7 @@ class RemoteAgentExecutor(AgentExecutor):
                 media_type = "text/plain",
                 context_id = context.context_id,
                 task_id = context.task_id
-            ) 
+            )
         )
 
 

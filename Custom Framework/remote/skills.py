@@ -1,4 +1,4 @@
-#Skill definitions for the remote agents
+#skill definition for one configured remote agent
 
 from a2a.types import AgentSkill
 
